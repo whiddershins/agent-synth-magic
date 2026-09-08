@@ -8,6 +8,21 @@ namespace {
 constexpr double pi = std::numbers::pi;
 constexpr double tau = 2.0 * pi;
 constexpr float modulation_radians = 8.0f;
+constexpr int pitch_amount = parameter_index("pitch.amount");
+constexpr int pitch_delay = parameter_index("pitch.delay");
+constexpr int pitch_attack = parameter_index("pitch.attack");
+constexpr int pitch_hold = parameter_index("pitch.hold");
+constexpr int pitch_decay = parameter_index("pitch.decay");
+constexpr int pitch_sustain = parameter_index("pitch.sustain");
+constexpr int pitch_release = parameter_index("pitch.release");
+constexpr int filter_type = parameter_index("filter.type");
+constexpr int filter_cutoff = parameter_index("filter.cutoff");
+constexpr int filter_resonance = parameter_index("filter.resonance");
+double poly_blep(double phase, double step) noexcept {
+    if (phase < step) { const double t = phase / step; return t + t - t * t - 1; }
+    if (phase > 1 - step) { const double t = (phase - 1) / step; return t * t + t + t + 1; }
+    return 0;
+}
 }
 
 Patch Patch::initial() noexcept {
@@ -56,6 +71,7 @@ bool Synth::prepare(double sample_rate) noexcept {
     voices_ = {};
     history_ = {};
     history_position_ = 0;
+    filter_ic1_ = filter_ic2_ = 0;
     update_targets();
     current_ = target_;
     return true;
@@ -72,6 +88,10 @@ bool Synth::set_patch(const Patch& patch) noexcept {
 void Synth::update_targets() noexcept {
     target_.gain = patch_.values[1];
     target_.feedback = patch_.values[2];
+    target_.cutoff = patch_.values[filter_cutoff];
+    target_.resonance = patch_.values[filter_resonance];
+    target_.filter_mix.fill(0);
+    target_.filter_mix[static_cast<int>(patch_.values[filter_type])] = 1;
     for (int i = 0; i < operator_count; ++i) {
         target_.multipliers[i] = patch_.op(i, ratio) * std::exp2(patch_.op(i, detune) / 1200.0);
         target_.levels[i] = patch_.op(i, level);
@@ -82,6 +102,12 @@ void Synth::update_targets() noexcept {
 void Synth::smooth() noexcept {
     current_.gain += smoothing_ * (target_.gain - current_.gain);
     current_.feedback += smoothing_ * (target_.feedback - current_.feedback);
+    current_.cutoff += smoothing_ * (target_.cutoff - current_.cutoff);
+    current_.resonance += smoothing_ * (target_.resonance - current_.resonance);
+    for (int i = 0; i < 4; ++i) {
+        current_.filter_mix[i] += smoothing_ * (target_.filter_mix[i] - current_.filter_mix[i]);
+        if (std::abs(current_.filter_mix[i] - target_.filter_mix[i]) < 1e-6f) current_.filter_mix[i] = target_.filter_mix[i];
+    }
     for (int i = 0; i < operator_count; ++i) {
         current_.multipliers[i] += smoothing_ * (target_.multipliers[i] - current_.multipliers[i]);
         current_.levels[i] += smoothing_ * (target_.levels[i] - current_.levels[i]);
@@ -126,7 +152,16 @@ bool Synth::note_on(int note, float velocity) noexcept {
     selected->age = ++age_;
     selected->tail = tail;
     selected->tail_remaining = tail != 0 ? fade_samples_ : 0;
-    for (int i = 0; i < operator_count; ++i) selected->operators[i].envelope.start(patch_.op(i, attack), internal_rate_);
+    selected->pitch_amount = patch_.values[pitch_amount];
+    selected->pitch_envelope.start(patch_.values[pitch_attack], sample_rate_, patch_.values[pitch_delay], patch_.values[pitch_hold]);
+    for (int i = 0; i < operator_count; ++i) {
+        auto& op = selected->operators[i];
+        op.envelope.start(patch_.op(i, attack), internal_rate_, patch_.op(i, delay), patch_.op(i, hold));
+        op.waveform = static_cast<int>(patch_.op(i, waveform));
+        op.noise = 0x9e3779b9u ^ (static_cast<std::uint32_t>(note + 1) * 0x85ebca6bu)
+            ^ (static_cast<std::uint32_t>(i + 1) * 0xc2b2ae35u) ^ static_cast<std::uint32_t>(age_);
+        if (op.noise == 0) op.noise = 1;
+    }
     return true;
 }
 
@@ -134,6 +169,7 @@ void Synth::note_off(int note) noexcept {
     for (auto& voice : voices_) {
         if (voice.note != note || !voice.held) continue;
         voice.held = false;
+        voice.pitch_envelope.release(patch_.values[pitch_release], sample_rate_);
         for (int i = 0; i < operator_count; ++i) voice.operators[i].envelope.release(patch_.op(i, release), internal_rate_);
     }
 }
@@ -141,6 +177,7 @@ void Synth::note_off(int note) noexcept {
 void Synth::panic() noexcept {
     for (auto& voice : voices_) {
         voice.held = false;
+        voice.pitch_envelope.release(0.008f, sample_rate_, true);
         for (auto& op : voice.operators) op.envelope.release(0.008f, internal_rate_, true);
     }
 }
@@ -151,6 +188,35 @@ float Synth::sine(double cycles) const noexcept {
     const auto index = static_cast<int>(position);
     const float fraction = static_cast<float>(position - index);
     return sine_table_[index] + fraction * (sine_table_[index + 1] - sine_table_[index]);
+}
+
+float Synth::oscillator(OperatorState& op, double cycles, double increment) const noexcept {
+    if (op.waveform == 0) return sine(cycles);
+    if (op.waveform == 4) {
+        op.noise ^= op.noise << 13; op.noise ^= op.noise >> 17; op.noise ^= op.noise << 5;
+        return static_cast<float>(op.noise >> 8) / 8388608.0f - 1.0f;
+    }
+    const double phase = cycles - std::floor(cycles);
+    const double step = std::clamp(increment, 1e-8, 0.49);
+    if (op.waveform == 1) return static_cast<float>(1 - 4 * std::abs(phase - 0.5));
+    if (op.waveform == 2) return static_cast<float>(2 * phase - 1 - poly_blep(phase, step));
+    const double shifted = phase < 0.5 ? phase + 0.5 : phase - 0.5;
+    return static_cast<float>((phase < 0.5 ? 1 : -1) + poly_blep(phase, step) - poly_blep(shifted, step));
+}
+
+float Synth::filter_sample(float input) noexcept {
+    if (current_.filter_mix[0] == 1) { filter_ic1_ = filter_ic2_ = 0; return input; }
+    // Topology-preserving state-variable filter, evaluated at the internal rate.
+    const double v3 = input - filter_ic2_;
+    const double band = filter_a1_ * (filter_ic1_ + filter_g_ * v3);
+    const double low = filter_ic2_ + filter_g_ * band;
+    filter_ic1_ = 2 * band - filter_ic1_;
+    filter_ic2_ = 2 * low - filter_ic2_;
+    if (std::abs(filter_ic1_) < 1e-20) filter_ic1_ = 0;
+    if (std::abs(filter_ic2_) < 1e-20) filter_ic2_ = 0;
+    const double high = input - filter_k_ * band - low;
+    return static_cast<float>(current_.filter_mix[0] * input + current_.filter_mix[1] * low
+        + current_.filter_mix[2] * high + current_.filter_mix[3] * band);
 }
 
 float Synth::render_voice(Voice& voice) noexcept {
@@ -164,9 +230,10 @@ float Synth::render_voice(Voice& voice) noexcept {
             if (routing.inputs[i] & (1u << j)) modulation += modulation_radians * outputs[j];
         }
         const float envelope = op.envelope.next(patch_.op(i, decay), current_.sustains[i], internal_rate_);
-        outputs[i] = sine(op.phase + modulation / tau) * envelope * current_.levels[i];
+        const double increment = voice.frequency * voice.pitch_multiplier * current_.multipliers[i] / internal_rate_;
+        outputs[i] = oscillator(op, op.phase + modulation / tau, increment) * envelope * current_.levels[i];
         op.previous = outputs[i];
-        op.phase += voice.frequency * current_.multipliers[i] / internal_rate_;
+        op.phase += increment;
         op.phase -= std::floor(op.phase);
         if (routing.carriers & (1u << i)) mixed += outputs[i];
     }
@@ -182,10 +249,19 @@ float Synth::render_voice(Voice& voice) noexcept {
 void Synth::render(std::span<float> output) noexcept {
     for (auto& sample : output) {
         smooth();
+        if (current_.filter_mix[0] != 1) {
+            filter_g_ = std::tan(pi * std::min(static_cast<double>(current_.cutoff), sample_rate_ * 0.45) / internal_rate_);
+            filter_k_ = 1.0 / current_.resonance;
+            filter_a1_ = 1.0 / (1.0 + filter_g_ * (filter_g_ + filter_k_));
+        }
+        for (auto& voice : voices_) if (active(voice) && voice.pitch_amount != 0) {
+            const float envelope = voice.pitch_envelope.next(patch_.values[pitch_decay], patch_.values[pitch_sustain], sample_rate_);
+            voice.pitch_multiplier = std::exp2(voice.pitch_amount * envelope / 12.0);
+        }
         for (int sub = 0; sub < oversampling; ++sub) {
             float mixed = 0;
             for (auto& voice : voices_) if (active(voice)) mixed += render_voice(voice);
-            const float driven = mixed * current_.gain;
+            const float driven = filter_sample(mixed) * current_.gain;
             // Smooth bounded saturator runs BEFORE downsampling.
             const float shaped = driven / std::sqrt(1.0f + driven * driven);
             history_[history_position_] = shaped;

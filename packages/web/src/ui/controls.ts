@@ -3,6 +3,10 @@ import type { ParameterDefinition, Patch, PatchStore } from '../patch';
 import { instrument } from '../parameters.generated';
 
 export function formatValue(value: number, definition: ParameterDefinition): string {
+  if (definition.options) return definition.options[value] ?? String(value);
+  if (definition.unit === 'semitones') return `${value > 0 ? '+' : ''}${value.toFixed(1)} st`;
+  if (definition.unit === 'Hz') return value >= 1000 ? `${(value / 1000).toFixed(1)} kHz` : `${Math.round(value)} Hz`;
+  if (definition.unit === 'Q') return value.toFixed(2);
   if (definition.unit === 'seconds') return value < 1 ? `${Math.round(value * 1000)} ms` : `${value.toFixed(2)} s`;
   if (definition.unit === 'cents') return `${value > 0 ? '+' : ''}${Math.round(value)} ct`;
   if (definition.unit === 'multiple') return `${value.toFixed(2)}×`;
@@ -15,6 +19,19 @@ export function makeControl(definition: ParameterDefinition, store: PatchStore, 
   element.className = 'parameter';
   const context = definition.operator ? `Operator ${definition.operator} ` : '';
   const inputId = `parameter-${definition.id}`;
+  if (definition.options) {
+    const label = document.createElement('label');
+    label.htmlFor = inputId; label.textContent = definition.label;
+    const select = document.createElement('select');
+    select.id = inputId; select.setAttribute('aria-label', `${context}${definition.label}`);
+    definition.options.forEach((name, value) => select.add(new Option(name, String(value))));
+    select.addEventListener('change', () => {
+      try { store.edit({ [definition.id]: Number(select.value) }); }
+      catch (error) { onError((error as Error).message); select.value = String(store.read().patch.parameters[definition.id]); }
+    });
+    element.classList.add('select-parameter'); element.title = definition.description; element.append(label, select);
+    return { element, update: patch => { select.value = String(patch.parameters[definition.id]); } };
+  }
   element.innerHTML = `<div class="parameter-label"><label for="${inputId}">${definition.label}</label><output></output></div><div class="parameter-input"><input id="${inputId}" type="range" aria-label="${context}${definition.label}" /><input class="number-input" type="number" aria-label="${context}${definition.label} value" /></div>`;
   element.title = definition.description;
   const range = element.querySelector<HTMLInputElement>('input[type=range]')!;
@@ -54,9 +71,12 @@ export function operatorControls(container: HTMLElement, store: PatchStore, onEr
     const card = document.createElement('section');
     card.className = 'operator-card';
     card.innerHTML = `<header class="operator-heading"><div><span class="operator-number">0${op}</span><h2>Operator ${op}</h2></div><span class="role"></span></header><div class="tone-controls"></div><div class="envelope-heading"><span>ENVELOPE</span><svg viewBox="0 0 110 22" aria-hidden="true"><path class="envelope-line" /></svg></div><div class="envelope-controls"></div>`;
-    for (const definition of definitions.filter((p) => p.operator === op)) {
+    const operatorDefinitions = definitions.filter(p => p.operator === op);
+    const order = ['waveform', 'ratio', 'detune', 'level', 'delay', 'attack', 'hold', 'decay', 'sustain', 'release'];
+    operatorDefinitions.sort((a,b) => order.indexOf(a.id.split('.')[1]!) - order.indexOf(b.id.split('.')[1]!));
+    for (const definition of operatorDefinitions) {
       const control = makeControl(definition, store, onError);
-      const isTone = ['ratio', 'detune', 'level'].some((field) => definition.id.endsWith(`.${field}`));
+      const isTone = ['waveform', 'ratio', 'detune', 'level'].some((field) => definition.id.endsWith(`.${field}`));
       card.querySelector(isTone ? '.tone-controls' : '.envelope-controls')!.append(control.element);
       updates.push(control.update);
     }
@@ -68,11 +88,14 @@ export function operatorControls(container: HTMLElement, store: PatchStore, onEr
       role.textContent = carrier ? 'CARRIER' : 'MODULATOR';
       card.classList.toggle('carrier', carrier);
       const parameter = (field: string) => patch.parameters[`op${op}.${field}` as keyof Patch['parameters']];
-      const a = 4 + 25 * Math.log1p(parameter('attack')) / Math.log(6);
-      const d = a + 6 + 25 * Math.log1p(parameter('decay')) / Math.log(9);
+      const times = ['delay','attack','hold','decay','release'].map(field => Math.log1p(parameter(field)) + .05);
+      const widths = times.map(time => time / times.reduce((a,b) => a+b, 0) * 82);
+      const delay = 1 + widths[0]!;
+      const a = delay + widths[1]!;
+      const h = a + widths[2]!;
+      const d = h + widths[3]!;
       const y = 20 - parameter('sustain') * 18;
-      const r = 8 + 20 * Math.log1p(parameter('release')) / Math.log(9);
-      path.setAttribute('d', `M1 20 L${a} 2 L${d} ${y} L${105 - r} ${y} L105 20`);
+      path.setAttribute('d', `M1 20 L${delay} 20 L${a} 2 L${h} 2 L${d} ${y} L${d + 22} ${y} L105 20`);
     });
     container.append(card);
   }

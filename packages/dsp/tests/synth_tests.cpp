@@ -168,7 +168,10 @@ void polyphony_and_extremes() {
 void allocation_free_audio_path() {
     Synth synth;
     std::array<float, 512> output{};
-    const auto patch = complex_patch(2);
+    auto patch = complex_patch(2);
+    patch.values[parameter_index("filter.type")] = 3;
+    patch.values[parameter_index("pitch.amount")] = 12;
+    for (int op = 0; op < 6; ++op) patch.op(op, waveform) = static_cast<float>(op % 5);
     monitor_allocations = true;
     const bool accepted = synth.set_patch(patch) && synth.note_on(60, 0.8f);
     synth.render(output);
@@ -179,6 +182,82 @@ void allocation_free_audio_path() {
     monitor_allocations = false;
     require(accepted && allocations == 0 && deallocations == 0, "audio/event path allocates and deallocates no heap memory");
 }
+void extended_envelope() {
+    Envelope env;
+    env.start(.1f, 1000, .2f, .3f);
+    for (int i = 0; i < 200; ++i) require(env.next(.1f, .4f, 1000) == 0, "delay is silent for its full duration");
+    for (int i = 0; i < 100; ++i) (void)env.next(.1f, .4f, 1000);
+    for (int i = 0; i < 300; ++i) require(env.next(.1f, .4f, 1000) == 1, "hold preserves the peak for its full duration");
+    for (int i = 0; i < 101; ++i) (void)env.next(.1f, .4f, 1000);
+    require(std::abs(env.next(.1f, .4f, 1000) - .4f) < 1e-6f, "decay reaches sustain after hold");
+    env.start(.1f, 1000, 1, 1);
+    env.release(.02f, 1000);
+    for (int i = 0; i < 21; ++i) require(env.next(.1f, .4f, 1000) == 0, "note-off during delay never starts an attack");
+    require(!env.active(), "note-off during delay retires the envelope");
+}
+void waveforms_pitch_and_filter() {
+    for (int shape = 0; shape < 5; ++shape) {
+        auto patch = sine_patch();
+        patch.op(0, waveform) = static_cast<float>(shape);
+        const auto rendered = render_note(patch, 512);
+        require(rendered == render_note(patch, 37), "every waveform including noise is repeatable across block sizes");
+        require(rms(rendered) > .01, "every waveform produces audio");
+        if (shape > 0) require(rendered != render_note(sine_patch(), 512), "non-sine waveforms have distinct output");
+    }
+    auto pitched = sine_patch();
+    pitched.values[parameter_index("pitch.amount")] = 12;
+    pitched.values[parameter_index("pitch.hold")] = .05f;
+    pitched.values[parameter_index("pitch.decay")] = .15f;
+    Synth synth;
+    require(synth.set_patch(pitched) && synth.note_on(69, 1), "pitch envelope fixture accepted");
+    std::vector<float> output(48000);
+    synth.render(output);
+    const auto crossings = [&](int start, int end) {
+        int count = 0;
+        for (int i = start + 1; i < end; ++i) if (output[i-1] <= 0 && output[i] > 0) ++count;
+        return count;
+    };
+    require(std::abs(crossings(480, 1920) - 26) <= 1, "pitch hold raises A4 by one octave");
+    require(std::abs(crossings(24000, 28800) - 44) <= 1, "pitch decay returns to played A4");
+    const auto filtered_rms = [](int mode, float cutoff, float ratio_value) {
+        auto patch = sine_patch();
+        patch.op(0, ratio) = ratio_value;
+        patch.values[parameter_index("filter.type")] = static_cast<float>(mode);
+        patch.values[parameter_index("filter.cutoff")] = cutoff;
+        Synth engine;
+        require(engine.set_patch(patch) && engine.note_on(69, 1), "filter fixture accepted");
+        std::vector<float> samples(24000);
+        engine.render(samples);
+        return rms(std::span<const float>(samples).last(12000));
+    };
+    const double dry = filtered_rms(0, 100, 1);
+    require(filtered_rms(1, 100, 1) < dry * .1, "low-pass removes tones above cutoff");
+    require(filtered_rms(2, 2000, 1) < dry * .1, "high-pass removes tones below cutoff");
+    require(filtered_rms(3, 440, 1) > filtered_rms(3, 440, 10) * 5, "band-pass favors its center frequency");
+    for (double rate : {8000.0, 48000.0, 192000.0}) {
+        for (int mode = 1; mode <= 3; ++mode) {
+            auto patch = complex_patch(3);
+            patch.values[parameter_index("filter.type")] = static_cast<float>(mode);
+            patch.values[parameter_index("filter.resonance")] = 10;
+            patch.values[parameter_index("pitch.amount")] = 48;
+            patch.values[parameter_index("pitch.sustain")] = 1;
+            for (int op = 0; op < 6; ++op) patch.op(op, waveform) = static_cast<float>(op % 5);
+            Synth engine;
+            require(engine.prepare(rate) && engine.set_patch(patch), "extreme extended patch accepted");
+            for (int note = 112; note < 128; ++note) require(engine.note_on(note, 1), "extreme polyphonic note accepted");
+            std::array<float, 512> samples;
+            for (float cutoff : {20.0f, 20000.0f, 20.0f}) {
+                patch.values[parameter_index("filter.cutoff")] = cutoff;
+                require(engine.set_patch(patch), "moving resonant filter accepted");
+                for (int block = 0; block < 10; ++block) {
+                    engine.render(samples);
+                    for (float sample : samples) require(std::isfinite(sample) && std::abs(sample) <= 1, "resonant extreme remains finite and bounded");
+                }
+            }
+        }
+    }
+}
+
 void c_abi_bounds() {
     require(synth_init(48000) == 1, "C ABI initializes");
     require(synth_parameter_count() == parameter_count, "C ABI agrees with schema");
@@ -191,6 +270,8 @@ void c_abi_bounds() {
 }
 
 int main() {
+    extended_envelope();
+    waveforms_pitch_and_filter();
     tuning_and_release();
     validation();
     routing_and_repeatability();

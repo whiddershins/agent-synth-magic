@@ -1,6 +1,7 @@
 // Generated from contracts/instrument.json. Run npm run generate.
 #pragma once
 #include <array>
+#include <string_view>
 
 namespace agent_synth {
 struct ParameterDefinition {
@@ -10,7 +11,11 @@ struct ParameterDefinition {
     float initial;
     bool integer;
 };
-inline constexpr int parameter_count = 45;
+inline constexpr int parameter_schema_version = 2;
+inline constexpr int legacy_parameter_count = 45;
+inline constexpr int extension_operator_offset = 55;
+inline constexpr int extension_operator_parameter_count = 3;
+inline constexpr int parameter_count = 73;
 inline constexpr std::array<ParameterDefinition, parameter_count> parameter_definitions {{
     {"algorithm", 0.0f, 3.0f, 0.0f, true},
     {"gain", 0.0f, 0.8f, 0.22f, false},
@@ -57,7 +62,39 @@ inline constexpr std::array<ParameterDefinition, parameter_count> parameter_defi
     {"op6.decay", 0.005f, 8.0f, 0.5f, false},
     {"op6.sustain", 0.0f, 1.0f, 0.3f, false},
     {"op6.release", 0.01f, 8.0f, 0.4f, false},
+    {"pitch.amount", -48.0f, 48.0f, 0.0f, false},
+    {"pitch.delay", 0.0f, 5.0f, 0.0f, false},
+    {"pitch.attack", 0.001f, 5.0f, 0.001f, false},
+    {"pitch.hold", 0.0f, 5.0f, 0.0f, false},
+    {"pitch.decay", 0.005f, 8.0f, 0.2f, false},
+    {"pitch.sustain", 0.0f, 1.0f, 0.0f, false},
+    {"pitch.release", 0.01f, 8.0f, 0.15f, false},
+    {"filter.type", 0.0f, 3.0f, 0.0f, true},
+    {"filter.cutoff", 20.0f, 20000.0f, 12000.0f, false},
+    {"filter.resonance", 0.5f, 10.0f, 0.707f, false},
+    {"op1.waveform", 0.0f, 4.0f, 0.0f, true},
+    {"op1.delay", 0.0f, 5.0f, 0.0f, false},
+    {"op1.hold", 0.0f, 5.0f, 0.0f, false},
+    {"op2.waveform", 0.0f, 4.0f, 0.0f, true},
+    {"op2.delay", 0.0f, 5.0f, 0.0f, false},
+    {"op2.hold", 0.0f, 5.0f, 0.0f, false},
+    {"op3.waveform", 0.0f, 4.0f, 0.0f, true},
+    {"op3.delay", 0.0f, 5.0f, 0.0f, false},
+    {"op3.hold", 0.0f, 5.0f, 0.0f, false},
+    {"op4.waveform", 0.0f, 4.0f, 0.0f, true},
+    {"op4.delay", 0.0f, 5.0f, 0.0f, false},
+    {"op4.hold", 0.0f, 5.0f, 0.0f, false},
+    {"op5.waveform", 0.0f, 4.0f, 0.0f, true},
+    {"op5.delay", 0.0f, 5.0f, 0.0f, false},
+    {"op5.hold", 0.0f, 5.0f, 0.0f, false},
+    {"op6.waveform", 0.0f, 4.0f, 0.0f, true},
+    {"op6.delay", 0.0f, 5.0f, 0.0f, false},
+    {"op6.hold", 0.0f, 5.0f, 0.0f, false},
 }};
+constexpr int parameter_index(std::string_view id) noexcept {
+    for (int i = 0; i < parameter_count; ++i) if (id == parameter_definitions[i].id) return i;
+    return -1;
+}
 struct Routing {
     std::array<unsigned, 6> inputs;
     unsigned carriers;

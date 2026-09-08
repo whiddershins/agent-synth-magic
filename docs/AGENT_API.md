@@ -27,18 +27,18 @@ await window.synth.replacePatch(before.patch, after.revision);
 
 ```ts
 {
-  schemaVersion: 1,
+  schemaVersion: 2,
   name: 'My patch',
   parameters: {
     algorithm: 0,
     gain: 0.22,
     feedback: 0,
-    // All 42 operator controls are required, e.g. op1.ratio … op6.release.
+    // All 73 controls are required. Use describe() to enumerate them.
   }
 }
 ```
 
-Use `describe().parameters` to enumerate the complete 45-control schema. Its operator level units need particular care: a modulator's full level contributes 8 radians to downstream phase; a carrier's level affects audible amplitude. Ratio and detune are combined into an oscillator frequency multiplier.
+Use `describe().parameters` to enumerate the complete 73-control schema. Its operator level units need particular care: a modulator's full level contributes 8 radians to downstream phase; a carrier's level affects audible amplitude. Ratio and detune are combined into an oscillator frequency multiplier.
 
 ## Custom auditions
 
@@ -65,7 +65,9 @@ The default phrase plays C3, C4, G4 and a C-major chord with fixed velocities. I
 ## Connect an external agent
 
 Run the local instrument with `npm run dev` (port 5173), or build it and use
-`npm run preview` (port 4173). Click **Connect agent**, then **Copy pairing
+`npm run preview` (port 4173). Open the local instrument with `?agent=1` appended to its URL
+(e.g. `http://127.0.0.1:5173/?agent=1`); the experimental panel is hidden by default.
+Click **Connect agent**, then **Copy pairing
 prompt**. Give that prompt to your existing coding agent. It includes this
 command with the current session and one-use code:
 
@@ -158,3 +160,5 @@ The bridge does not call a model. A WAV download and its measured RMS/centroid
 are evidence of sound generation and transport, not evidence that an agent heard
 or judged it. Agents without audio ingestion must say so and use the user's
 listening feedback. See [the user-story flow and acceptance checks](AGENT_INTEGRATION.md).
+
+Schema-1 imports migrate to schema 2 with neutral extension defaults. New snapshots and exports always contain schema 2. See [the migration](PATCH_SCHEMA.md).

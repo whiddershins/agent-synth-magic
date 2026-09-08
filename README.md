@@ -2,7 +2,7 @@
 
 A six-operator FM synthesizer with a C++20 DSP package, a WebAssembly build, and a vanilla HTML/CSS/TypeScript interface. The browser plays the compiled C++ engine in an AudioWorklet. Independent offline renders provide reproducible audio and measurements for an agent-controlled sound-design loop.
 
-The instrument includes a local API for your existing agent: pair once, approve its permissions, then let it edit the visible patch, render/download auditions, and play them. The synth makes no model calls and needs no provider API key. Audio-capable model evaluation and native JUCE/AU wrappers remain follow-on work.
+The public instrument focuses on playing and shaping sounds. The experimental agent connection is hidden by default and can be enabled locally. The synth makes no model calls and needs no provider API key.
 
 ## Quick start
 
@@ -23,7 +23,9 @@ After editing C++, run `npm run build:wasm` and reload the page. Vite hot-reload
 
 ## Connect your agent
 
-Click **Connect agent** in the instrument and copy its pairing prompt to your
+The experimental agent panel is hidden for the initial public instrument release.
+For local development, open `http://127.0.0.1:5173/?agent=1`, then click
+**Connect agent** and copy its pairing prompt to your
 agent. The agent runs the provided `npm run agent -- connect ...` command; approve
 its requested permissions in the page. It can then discover controls, make batch
 edits, download real WAV auditions, and play them through the open instrument.
@@ -42,7 +44,7 @@ packages/web/                 Vanilla web instrument and audio bridge
 packages/bridge/              Local agent API, pairing, permissions, sessions
 scripts/                      Toolchain, code generation, builds
 tests/                        Native/Wasm parity and browser integration
-docs/SPEC.md                  Version 0.1 scope and acceptance criteria
+docs/SPEC.md                  Version 0.3 scope and acceptance criteria
 docs/ARCHITECTURE.md           Audio, state, and integration boundaries
 docs/AGENT_API.md              Structured control and audition API
 .github/workflows/ci.yml       Reproducible builds and checks
@@ -50,11 +52,13 @@ docs/AGENT_API.md              Structured control and audition API
 
 ## Instrument
 
-- Six sine operators with ratio, detune, level, and ADSR envelopes.
+- Six operators with sine, triangle, saw, square, or deterministic noise; ratio, detune, level, and delay/attack/hold/decay/sustain/release envelopes.
 - Four routing algorithms, operator 6 self-feedback, and sixteen voices.
 - 4x oversampling with a 127-tap Blackman-windowed sinc decimator.
-- Smoothed continuous controls; routing changes apply to new notes.
-- Six starting patches, JSON patch import/export, undo, and a fixed audition phrase.
+- A separate ±48-semitone pitch envelope and resonant low-pass, high-pass, or band-pass filter.
+- Smoothed continuous controls; routing, wave shape, and pitch depth changes apply to new notes.
+- Drag glissando, independent touch contacts, and MIDI input with velocity and sustain pedal in supporting browsers.
+- Nine starting patches, JSON patch import/export, undo, and a fixed audition phrase.
 - WAV export and peak, RMS, and spectral-centroid measurements from the rendered audio.
 - `window.synth` exposes versioned control discovery, patch snapshots, revision-checked edits, and offline rendering.
 
@@ -89,7 +93,7 @@ bash scripts/build-native.sh
 In another CMake project:
 
 ```cmake
-find_package(AgentSynth 0.1 CONFIG REQUIRED)
+find_package(AgentSynth 0.3 CONFIG REQUIRED)
 target_link_libraries(my_instrument PRIVATE AgentSynth::dsp)
 ```
 
@@ -119,6 +123,10 @@ Edit `contracts/instrument.json`, then run `npm run generate`. Commit both gener
 
 ## Current limits
 
-Oversampling reduces aliasing, but extreme ratios, high notes, and deep feedback can still alias. This version has no effects, device MIDI input, sustain pedal, or arbitrary modulation graph. Envelope durations latch when each segment starts. Auditions are bounded to 12 seconds and 256 note events; the default five-second phrase can truncate long releases. Choose a longer custom score when evaluating those patches.
+Oversampling reduces aliasing, but extreme ratios, high notes, and deep feedback can still alias. This version has no effects, MIDI pitch-bend/CC mapping, or arbitrary modulation graph. Delay, attack, and hold durations latch at note-on; decay and release latch at segment entry. Noise ignores ratio and incoming phase modulation. Saw/square edge correction and oversampling reduce aliasing but cannot eliminate it under deep phase modulation. Auditions are bounded to 12 seconds and 256 note events; the default five-second phrase can truncate long releases. Choose a longer custom score when evaluating those patches.
+
+Web MIDI requires browser support and permission; Safari/iPad Safari currently does not expose it. The on-screen keyboard uses independent Pointer Events for touch playing and glissando. Browser tests cover multiple emulated contacts; physical iPad and MIDI hardware have not been certified. The last patch is retained for the current tab; Save patch exports a durable copy.
+
+Schema 2 imports complete schema-1 patches with neutral defaults; see [the migration](docs/PATCH_SCHEMA.md).
 
 The repository is private by default and no redistribution license is granted yet. Licensing can be chosen when the package is ready to share.

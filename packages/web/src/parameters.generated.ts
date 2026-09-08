@@ -1,6 +1,6 @@
 // Generated from contracts/instrument.json. Run npm run generate.
 export const instrument = {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "id": "agent-synth.fm6",
   "name": "FM / 6",
   "operatorCount": 6,
@@ -201,7 +201,7 @@ export const parameters = [
     "default": 0.5,
     "step": 0.001,
     "scale": "log",
-    "description": "Linear fall from peak to sustain. Duration is captured when the attack ends.",
+    "description": "Linear fall from peak to sustain. Duration is captured after the attack and any hold stage.",
     "operator": 1
   },
   {
@@ -281,7 +281,7 @@ export const parameters = [
     "default": 0.5,
     "step": 0.001,
     "scale": "log",
-    "description": "Linear fall from peak to sustain. Duration is captured when the attack ends.",
+    "description": "Linear fall from peak to sustain. Duration is captured after the attack and any hold stage.",
     "operator": 2
   },
   {
@@ -361,7 +361,7 @@ export const parameters = [
     "default": 0.5,
     "step": 0.001,
     "scale": "log",
-    "description": "Linear fall from peak to sustain. Duration is captured when the attack ends.",
+    "description": "Linear fall from peak to sustain. Duration is captured after the attack and any hold stage.",
     "operator": 3
   },
   {
@@ -441,7 +441,7 @@ export const parameters = [
     "default": 0.5,
     "step": 0.001,
     "scale": "log",
-    "description": "Linear fall from peak to sustain. Duration is captured when the attack ends.",
+    "description": "Linear fall from peak to sustain. Duration is captured after the attack and any hold stage.",
     "operator": 4
   },
   {
@@ -521,7 +521,7 @@ export const parameters = [
     "default": 0.5,
     "step": 0.001,
     "scale": "log",
-    "description": "Linear fall from peak to sustain. Duration is captured when the attack ends.",
+    "description": "Linear fall from peak to sustain. Duration is captured after the attack and any hold stage.",
     "operator": 5
   },
   {
@@ -601,7 +601,7 @@ export const parameters = [
     "default": 0.5,
     "step": 0.001,
     "scale": "log",
-    "description": "Linear fall from peak to sustain. Duration is captured when the attack ends.",
+    "description": "Linear fall from peak to sustain. Duration is captured after the attack and any hold stage.",
     "operator": 6
   },
   {
@@ -626,6 +626,392 @@ export const parameters = [
     "scale": "log",
     "description": "Linear fall from the current envelope level to silence after note-off. Duration is captured at note-off.",
     "operator": 6
+  },
+  {
+    "id": "pitch.amount",
+    "label": "Pitch depth",
+    "unit": "semitones",
+    "min": -48,
+    "max": 48,
+    "default": 0,
+    "step": 0.1,
+    "description": "Pitch envelope depth in semitones. Zero disables pitch movement. Captured at note-on.",
+    "sinceVersion": 2
+  },
+  {
+    "id": "pitch.delay",
+    "label": "Pitch delay",
+    "unit": "seconds",
+    "min": 0,
+    "max": 5,
+    "default": 0,
+    "step": 0.001,
+    "description": "Time before the pitch envelope starts. Captured at note-on.",
+    "sinceVersion": 2
+  },
+  {
+    "id": "pitch.attack",
+    "label": "Pitch attack",
+    "unit": "seconds",
+    "min": 0.001,
+    "max": 5,
+    "default": 0.001,
+    "step": 0.001,
+    "description": "Rise from the played pitch to the pitch depth.",
+    "scale": "log",
+    "sinceVersion": 2
+  },
+  {
+    "id": "pitch.hold",
+    "label": "Pitch hold",
+    "unit": "seconds",
+    "min": 0,
+    "max": 5,
+    "default": 0,
+    "step": 0.001,
+    "description": "Time at full pitch depth before decay.",
+    "sinceVersion": 2
+  },
+  {
+    "id": "pitch.decay",
+    "label": "Pitch decay",
+    "unit": "seconds",
+    "min": 0.005,
+    "max": 8,
+    "default": 0.2,
+    "step": 0.001,
+    "description": "Move from full pitch depth to the sustain proportion.",
+    "scale": "log",
+    "sinceVersion": 2
+  },
+  {
+    "id": "pitch.sustain",
+    "label": "Pitch sustain",
+    "unit": "linear",
+    "min": 0,
+    "max": 1,
+    "default": 0,
+    "step": 0.001,
+    "description": "Proportion of pitch depth held after decay.",
+    "sinceVersion": 2
+  },
+  {
+    "id": "pitch.release",
+    "label": "Pitch release",
+    "unit": "seconds",
+    "min": 0.01,
+    "max": 8,
+    "default": 0.15,
+    "step": 0.001,
+    "description": "Return to the played pitch after note-off.",
+    "scale": "log",
+    "sinceVersion": 2
+  },
+  {
+    "id": "filter.type",
+    "label": "Filter",
+    "unit": "enum",
+    "min": 0,
+    "max": 3,
+    "default": 0,
+    "step": 1,
+    "description": "Resonant output filter mode, before the output saturator.",
+    "integer": true,
+    "options": [
+      "Bypass",
+      "Low-pass",
+      "High-pass",
+      "Band-pass"
+    ],
+    "sinceVersion": 2
+  },
+  {
+    "id": "filter.cutoff",
+    "label": "Cutoff",
+    "unit": "Hz",
+    "min": 20,
+    "max": 20000,
+    "default": 12000,
+    "step": 1,
+    "description": "Filter cutoff, smoothed over approximately 10 ms and limited by the sample rate.",
+    "scale": "log",
+    "sinceVersion": 2
+  },
+  {
+    "id": "filter.resonance",
+    "label": "Resonance",
+    "unit": "Q",
+    "min": 0.5,
+    "max": 10,
+    "default": 0.707,
+    "step": 0.01,
+    "description": "Resonance Q. Larger values emphasize frequencies near cutoff.",
+    "scale": "log",
+    "sinceVersion": 2
+  },
+  {
+    "id": "op1.waveform",
+    "label": "Wave",
+    "unit": "enum",
+    "min": 0,
+    "max": 4,
+    "default": 0,
+    "step": 1,
+    "description": "Oscillator shape, captured at note-on. Noise is deterministic white noise; ratio and incoming phase modulation do not change a noise source.",
+    "integer": true,
+    "options": [
+      "Sine",
+      "Triangle",
+      "Saw",
+      "Square",
+      "Noise"
+    ],
+    "operator": 1,
+    "sinceVersion": 2
+  },
+  {
+    "id": "op1.delay",
+    "label": "Delay",
+    "unit": "seconds",
+    "min": 0,
+    "max": 5,
+    "default": 0,
+    "step": 0.001,
+    "description": "Silence before attack. Captured at note-on.",
+    "operator": 1,
+    "sinceVersion": 2
+  },
+  {
+    "id": "op1.hold",
+    "label": "Hold",
+    "unit": "seconds",
+    "min": 0,
+    "max": 5,
+    "default": 0,
+    "step": 0.001,
+    "description": "Time at maximum envelope level between attack and decay. Captured at note-on.",
+    "operator": 1,
+    "sinceVersion": 2
+  },
+  {
+    "id": "op2.waveform",
+    "label": "Wave",
+    "unit": "enum",
+    "min": 0,
+    "max": 4,
+    "default": 0,
+    "step": 1,
+    "description": "Oscillator shape, captured at note-on. Noise is deterministic white noise; ratio and incoming phase modulation do not change a noise source.",
+    "integer": true,
+    "options": [
+      "Sine",
+      "Triangle",
+      "Saw",
+      "Square",
+      "Noise"
+    ],
+    "operator": 2,
+    "sinceVersion": 2
+  },
+  {
+    "id": "op2.delay",
+    "label": "Delay",
+    "unit": "seconds",
+    "min": 0,
+    "max": 5,
+    "default": 0,
+    "step": 0.001,
+    "description": "Silence before attack. Captured at note-on.",
+    "operator": 2,
+    "sinceVersion": 2
+  },
+  {
+    "id": "op2.hold",
+    "label": "Hold",
+    "unit": "seconds",
+    "min": 0,
+    "max": 5,
+    "default": 0,
+    "step": 0.001,
+    "description": "Time at maximum envelope level between attack and decay. Captured at note-on.",
+    "operator": 2,
+    "sinceVersion": 2
+  },
+  {
+    "id": "op3.waveform",
+    "label": "Wave",
+    "unit": "enum",
+    "min": 0,
+    "max": 4,
+    "default": 0,
+    "step": 1,
+    "description": "Oscillator shape, captured at note-on. Noise is deterministic white noise; ratio and incoming phase modulation do not change a noise source.",
+    "integer": true,
+    "options": [
+      "Sine",
+      "Triangle",
+      "Saw",
+      "Square",
+      "Noise"
+    ],
+    "operator": 3,
+    "sinceVersion": 2
+  },
+  {
+    "id": "op3.delay",
+    "label": "Delay",
+    "unit": "seconds",
+    "min": 0,
+    "max": 5,
+    "default": 0,
+    "step": 0.001,
+    "description": "Silence before attack. Captured at note-on.",
+    "operator": 3,
+    "sinceVersion": 2
+  },
+  {
+    "id": "op3.hold",
+    "label": "Hold",
+    "unit": "seconds",
+    "min": 0,
+    "max": 5,
+    "default": 0,
+    "step": 0.001,
+    "description": "Time at maximum envelope level between attack and decay. Captured at note-on.",
+    "operator": 3,
+    "sinceVersion": 2
+  },
+  {
+    "id": "op4.waveform",
+    "label": "Wave",
+    "unit": "enum",
+    "min": 0,
+    "max": 4,
+    "default": 0,
+    "step": 1,
+    "description": "Oscillator shape, captured at note-on. Noise is deterministic white noise; ratio and incoming phase modulation do not change a noise source.",
+    "integer": true,
+    "options": [
+      "Sine",
+      "Triangle",
+      "Saw",
+      "Square",
+      "Noise"
+    ],
+    "operator": 4,
+    "sinceVersion": 2
+  },
+  {
+    "id": "op4.delay",
+    "label": "Delay",
+    "unit": "seconds",
+    "min": 0,
+    "max": 5,
+    "default": 0,
+    "step": 0.001,
+    "description": "Silence before attack. Captured at note-on.",
+    "operator": 4,
+    "sinceVersion": 2
+  },
+  {
+    "id": "op4.hold",
+    "label": "Hold",
+    "unit": "seconds",
+    "min": 0,
+    "max": 5,
+    "default": 0,
+    "step": 0.001,
+    "description": "Time at maximum envelope level between attack and decay. Captured at note-on.",
+    "operator": 4,
+    "sinceVersion": 2
+  },
+  {
+    "id": "op5.waveform",
+    "label": "Wave",
+    "unit": "enum",
+    "min": 0,
+    "max": 4,
+    "default": 0,
+    "step": 1,
+    "description": "Oscillator shape, captured at note-on. Noise is deterministic white noise; ratio and incoming phase modulation do not change a noise source.",
+    "integer": true,
+    "options": [
+      "Sine",
+      "Triangle",
+      "Saw",
+      "Square",
+      "Noise"
+    ],
+    "operator": 5,
+    "sinceVersion": 2
+  },
+  {
+    "id": "op5.delay",
+    "label": "Delay",
+    "unit": "seconds",
+    "min": 0,
+    "max": 5,
+    "default": 0,
+    "step": 0.001,
+    "description": "Silence before attack. Captured at note-on.",
+    "operator": 5,
+    "sinceVersion": 2
+  },
+  {
+    "id": "op5.hold",
+    "label": "Hold",
+    "unit": "seconds",
+    "min": 0,
+    "max": 5,
+    "default": 0,
+    "step": 0.001,
+    "description": "Time at maximum envelope level between attack and decay. Captured at note-on.",
+    "operator": 5,
+    "sinceVersion": 2
+  },
+  {
+    "id": "op6.waveform",
+    "label": "Wave",
+    "unit": "enum",
+    "min": 0,
+    "max": 4,
+    "default": 0,
+    "step": 1,
+    "description": "Oscillator shape, captured at note-on. Noise is deterministic white noise; ratio and incoming phase modulation do not change a noise source.",
+    "integer": true,
+    "options": [
+      "Sine",
+      "Triangle",
+      "Saw",
+      "Square",
+      "Noise"
+    ],
+    "operator": 6,
+    "sinceVersion": 2
+  },
+  {
+    "id": "op6.delay",
+    "label": "Delay",
+    "unit": "seconds",
+    "min": 0,
+    "max": 5,
+    "default": 0,
+    "step": 0.001,
+    "description": "Silence before attack. Captured at note-on.",
+    "operator": 6,
+    "sinceVersion": 2
+  },
+  {
+    "id": "op6.hold",
+    "label": "Hold",
+    "unit": "seconds",
+    "min": 0,
+    "max": 5,
+    "default": 0,
+    "step": 0.001,
+    "description": "Time at maximum envelope level between attack and decay. Captured at note-on.",
+    "operator": 6,
+    "sinceVersion": 2
   }
 ] as const;
 export type ParameterId = typeof parameters[number]['id'];

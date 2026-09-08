@@ -13,11 +13,13 @@ export interface ParameterDefinition {
   readonly integer?: boolean;
   readonly operator?: number;
   readonly scale?: string;
+  readonly options?: readonly string[];
+  readonly sinceVersion?: number;
 }
 export const definitions: readonly ParameterDefinition[] = parameters;
 export const definitionById = new Map(definitions.map((definition) => [definition.id, definition]));
 export interface Patch {
-  schemaVersion: 1;
+  schemaVersion: 2;
   name: string;
   parameters: Record<ParameterId, number>;
 }
@@ -28,23 +30,25 @@ function record(value: unknown): value is Record<string, unknown> {
 }
 
 export function validatePatch(value: unknown): Patch {
-  if (!record(value) || value.schemaVersion !== instrument.schemaVersion) throw new Error('Expected a version 1 FM / 6 patch.');
+  if (!record(value) || (value.schemaVersion !== 1 && value.schemaVersion !== instrument.schemaVersion)) throw new Error('Expected a version 1 or 2 FM / 6 patch.');
   if (typeof value.name !== 'string' || !value.name.trim() || value.name.length > 80) throw new Error('Patch names must contain 1–80 characters.');
   if (!record(value.parameters)) throw new Error('Patch parameters are missing.');
-  if (Object.keys(value.parameters).length !== definitions.length) throw new Error(`A patch must contain exactly ${definitions.length} parameters.`);
+  const required = definitions.filter(p => (p.sinceVersion ?? 1) <= Number(value.schemaVersion));
+  if (Object.keys(value.parameters).length !== required.length) throw new Error(`A version ${value.schemaVersion} patch must contain exactly ${required.length} parameters.`);
+  for (const id of Object.keys(value.parameters)) if (!required.some(p => p.id === id)) throw new Error(`Unknown parameter: ${id}`);
   const values = {} as Record<ParameterId, number>;
   for (const definition of definitions) {
-    const number = value.parameters[definition.id];
+    const number = (definition.sinceVersion ?? 1) > Number(value.schemaVersion) ? definition.default : value.parameters[definition.id];
     if (typeof number !== 'number' || !Number.isFinite(number) || number < definition.min || number > definition.max || (definition.integer && !Number.isInteger(number))) {
       throw new Error(`${definition.id} must be ${definition.integer ? 'an integer' : 'a number'} between ${definition.min} and ${definition.max}.`);
     }
     values[definition.id] = number;
   }
-  return { schemaVersion: 1, name: value.name.trim(), parameters: values };
+  return { schemaVersion: 2, name: value.name.trim(), parameters: values };
 }
 
 export function initialPatch(): Patch {
-  return { schemaVersion: 1, name: 'Pure sine', parameters: Object.fromEntries(definitions.map((p) => [p.id, p.default])) as Patch['parameters'] };
+  return { schemaVersion: 2, name: 'Pure sine', parameters: Object.fromEntries(definitions.map((p) => [p.id, p.default])) as Patch['parameters'] };
 }
 
 export function patchValues(patch: Patch): Float32Array {

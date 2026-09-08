@@ -1,4 +1,5 @@
 import { patchValues, definitions } from '../patch';
+import { instrument } from '../parameters.generated';
 import type { Patch } from '../patch';
 
 interface SynthExports extends WebAssembly.Exports {
@@ -30,7 +31,7 @@ export class WasmSynth {
     });
     this.exports = instance.exports as SynthExports;
     this.exports._initialize();
-    if (this.exports.synth_schema_version() !== 1 || this.exports.synth_parameter_count() !== definitions.length) throw new Error('The synth binary and parameter contract do not match. Rebuild WebAssembly.');
+    if (this.exports.synth_schema_version() !== instrument.schemaVersion || this.exports.synth_parameter_count() !== definitions.length) throw new Error('The synth binary and parameter contract do not match. Rebuild WebAssembly.');
     if (!this.exports.synth_init(sampleRate)) throw new Error('Unsupported sample rate.');
     this.capacity = this.exports.synth_capacity();
     this.#patch = new Float32Array(this.exports.memory.buffer, this.exports.synth_patch_buffer(), definitions.length);

@@ -29,10 +29,10 @@ async function pair(page: Page, request: APIRequestContext, name = 'Studio agent
 test('an agent edits, auditions, revises and restores the visible instrument', async ({ page, request }) => {
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
-  await page.goto('/');
+  await page.goto('/?agent=1');
   const connection = await pair(page, request);
   const describe = (await (await connection.call('describe')).json()).result;
-  expect(describe.instrument.parameters).toHaveLength(45);
+  expect(describe.instrument.parameters).toHaveLength(73);
   const initial = (await (await connection.call('read_patch')).json()).result;
   const changed = await connection.call('apply_changes', { changes: { 'op1.ratio': 2, gain: .2 }, name: 'Agent candidate', expectedRevision: initial.revision }, 'candidate-edit-001');
   expect(changed.status()).toBe(200);
@@ -83,7 +83,7 @@ test('an agent edits, auditions, revises and restores the visible instrument', a
 });
 
 test('closing the instrument invalidates its agent credential', async ({ page, request }) => {
-  await page.goto('/');
+  await page.goto('/?agent=1');
   const connection = await pair(page, request, 'Reload agent');
   await page.reload();
   await expect(page.getByRole('button', { name: 'Connect agent', exact: true })).toBeVisible();

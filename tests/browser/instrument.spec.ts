@@ -78,3 +78,102 @@ test('narrow layout keeps controls on screen and a key is playable with a pointe
   await expect(page.locator('#active-note')).toHaveText('—');
   await page.getByRole('button', { name: 'Stop all' }).click();
 });
+
+test('new sound controls round trip and the public page hides agent setup', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByRole('region', { name: 'Agent connection' })).toBeHidden();
+  await page.getByRole('combobox', { name: 'Operator 1 Wave', exact: true }).selectOption('4');
+  await page.getByRole('combobox', { name: 'Filter', exact: true }).selectOption('3');
+  const depth = page.getByRole('spinbutton', { name: 'Pitch depth value', exact: true });
+  await depth.fill('12'); await depth.press('Tab');
+  const hold = page.getByRole('spinbutton', { name: 'Operator 1 Hold value', exact: true });
+  await hold.fill('.25'); await hold.press('Tab');
+  const patch = await page.evaluate(() => window.synth.readPatch().patch);
+  expect(patch.schemaVersion).toBe(2);
+  expect(patch.parameters['op1.waveform']).toBe(4);
+  expect(patch.parameters['filter.type']).toBe(3);
+  expect(patch.parameters['pitch.amount']).toBe(12);
+  expect(patch.parameters['op1.hold']).toBe(.25);
+  await page.reload();
+  expect(await page.evaluate(() => window.synth.readPatch().patch)).toEqual(patch);
+  const result = await page.evaluate(async () => {
+    const score = { duration: .4, events: [{ time: 0, type: 'on' as const, note: 60, velocity: .8 }, { time: .2, type: 'off' as const, note: 60 }] };
+    const a = await window.synth.render({ score });
+    const b = await window.synth.render({ score });
+    return { peak: a.measurements.peak, same: a.samples.every((value, i) => value === b.samples[i]) };
+  });
+  expect(result.same).toBe(true);
+  expect(result.peak).toBeGreaterThan(.001);
+});
+
+test('drag glissando changes keys and shared ownership prevents premature release', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Enable audio' }).click();
+  const c = page.getByRole('button', { name: 'Play C4', exact: true });
+  const d = page.getByRole('button', { name: 'Play D4', exact: true });
+  await c.scrollIntoViewIfNeeded();
+  const a = (await c.boundingBox())!, b = (await d.boundingBox())!;
+  await page.keyboard.down('a');
+  await page.mouse.move(a.x + a.width / 2, a.y + a.height - 10); await page.mouse.down();
+  await page.mouse.move(b.x + b.width / 2, b.y + b.height - 10, { steps: 5 });
+  await expect(page.locator('#active-note')).toHaveText('C4 · D4');
+  await page.mouse.up();
+  await expect(page.locator('#active-note')).toHaveText('C4');
+  await page.keyboard.up('a');
+  await expect(page.locator('#active-note')).toHaveText('—');
+  await page.mouse.move(a.x + a.width / 2, a.y + a.height - 10); await page.mouse.down();
+  await page.mouse.move(a.x, a.y - 25);
+  await expect(page.locator('#active-note')).toHaveText('—');
+  await page.mouse.up();
+});
+
+test('two touch contacts play independently and one finger can glide', async ({ page, context }) => {
+  await page.setViewportSize({ width: 820, height: 1180 });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Enable audio' }).click();
+  const c = page.getByRole('button', { name: 'Play C3', exact: true });
+  await c.scrollIntoViewIfNeeded();
+  const a = (await c.boundingBox())!;
+  const b = (await page.getByRole('button', { name: 'Play E3', exact: true }).boundingBox())!;
+  const d = (await page.getByRole('button', { name: 'Play D3', exact: true }).boundingBox())!;
+  const contact = (box: typeof a, id: number) => ({ x: box.x + box.width / 2, y: box.y + box.height - 12, id });
+  const cdp = await context.newCDPSession(page);
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [contact(a,1), contact(b,2)] });
+  await expect(page.locator('#active-note')).toHaveText('C3 · E3');
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [contact(d,1), contact(b,2)] });
+  await expect(page.locator('#active-note')).toHaveText('E3 · D3');
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [contact(d,1)] });
+  await expect(page.locator('#active-note')).toHaveText('E3');
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchCancel', touchPoints: [] });
+  await expect(page.locator('#active-note')).toHaveText('—');
+});
+
+test('MIDI handles velocity-zero, sustain, shared keys and device disconnect', async ({ page }) => {
+  await page.addInitScript(() => {
+    const input = { id: 'test', name: 'Test keyboard', state: 'connected', onmidimessage: null as ((event: { data: Uint8Array }) => void) | null, close: async () => {} };
+    const access = { inputs: new Map([['test', input]]), onstatechange: null as (() => void) | null };
+    Object.defineProperty(navigator, 'requestMIDIAccess', { value: async () => access });
+    Object.assign(window, {
+      sendMidi: (data: number[]) => input.onmidimessage?.({ data: new Uint8Array(data) }),
+      unplugMidi: () => { input.state = 'disconnected'; access.onstatechange?.(); },
+    });
+  });
+  const send = (data: number[]) => page.evaluate(data => (window as unknown as { sendMidi(data: number[]): void }).sendMidi(data), data);
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Enable MIDI' }).click();
+  await expect(page.locator('#midi-status')).toContainText('1 MIDI input');
+  await send([0x90,60,100]);
+  await expect(page.locator('#active-note')).toHaveText('C4');
+  await expect(page.locator('#output-level')).not.toHaveText('−∞ dB');
+  await send([0xb0,64,127]); await send([0x90,60,0]);
+  await expect(page.locator('#active-note')).toHaveText('C4');
+  await page.keyboard.down('a');
+  await send([0xb0,64,0]);
+  await expect(page.locator('#active-note')).toHaveText('C4');
+  await page.keyboard.up('a');
+  await expect(page.locator('#active-note')).toHaveText('—');
+  await send([0x90,64,100]);
+  await page.evaluate(() => (window as unknown as { unplugMidi(): void }).unplugMidi());
+  await expect(page.locator('#active-note')).toHaveText('—');
+  await expect(page.locator('#midi-status')).toContainText('Connect a keyboard');
+});

@@ -16,7 +16,7 @@ std::array<float, capacity> output{};
 }
 
 extern "C" {
-SYNTH_EXPORT int synth_schema_version() { return 1; }
+SYNTH_EXPORT int synth_schema_version() { return agent_synth::parameter_schema_version; }
 SYNTH_EXPORT int synth_parameter_count() { return agent_synth::parameter_count; }
 SYNTH_EXPORT int synth_capacity() { return capacity; }
 SYNTH_EXPORT int synth_init(double sample_rate) {

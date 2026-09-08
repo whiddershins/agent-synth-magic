@@ -6,11 +6,11 @@
 
 The engine uses phase modulation. Operators are evaluated from 6 down to 1; every routing edge points toward an already evaluable lower-numbered carrier. The routing masks are generated from the same contract used to draw the web diagram. Modulator output is scaled by 8 radians. Operator 6 feedback uses its envelope/level-scaled output from the previous internal sample.
 
-Per-operator pitch multiplier, level and sustain, plus output gain and feedback, use a 10 ms one-pole smoother updated at the output sample rate. New patches snap to their target when no voices are active. Attack, decay, and release durations latch at segment entry; envelopes are linear. A voice captures its routing at note-on, so a topology edit does not discontinuously reroute a held note.
+Per-operator pitch multiplier, level and sustain, plus output gain and feedback, use a 10 ms one-pole smoother updated at the output sample rate. New patches snap to their target when no voices are active. Delay, attack, and hold durations latch at note-on; decay and release latch at segment entry. Envelopes are linear, with optional delay and hold stages that take zero samples when disabled. A voice captures its routing at note-on, so a topology edit does not discontinuously reroute a held note.
 
 Repeated notes retrigger their held voice. Otherwise the first idle voice is reused; when all voices are busy the oldest is replaced. A 3 ms decaying continuation of the last output value softens replacement discontinuities. This is a simple declick mechanism, not preservation of the old voice's full release. The UI tracks keyboard/pointer ownership so releasing one input source does not release a note still held by another.
 
-All oscillators, envelopes and the saturator run at 4x sample rate. A 127-tap FIR decimator uses a cutoff at 80% of output Nyquist and introduces 15.75 output samples of group delay. High ratios and feedback are not guaranteed alias-free. This is an initial quality/CPU tradeoff to evaluate with listening and spectral measurements.
+Operator oscillators, level envelopes, the resonant filter and saturator run at 4x sample rate. Each voice evaluates its pitch envelope at output sample rate and applies the same multiplier to all six operators. A 127-tap FIR decimator uses a cutoff at 80% of output Nyquist and introduces 15.75 output samples of group delay. High ratios and feedback are not guaranteed alias-free. This is an initial quality/CPU tradeoff to evaluate with listening and spectral measurements.
 
 `prepare()` clears voices and filter state, preserves the selected patch, and validates sample rates in [8,000, 192,000] Hz. Invalid patches are rejected in their entirety, leaving the previous state unchanged.
 
@@ -53,3 +53,11 @@ A connected model should retain a candidate's exact patch, score, sample rate, a
 ## Native follow-on
 
 JUCE can wrap the existing C++ package for standalone and Audio Unit targets. Keep JUCE parameter/device/UI types outside `AgentSynth::dsp`. The wrapper owns synchronization and translates host events into calls at the correct sample boundaries. A browser UI is not itself the native audio engine.
+
+## Extended sound controls and compatibility
+
+Schema/ABI 2 appends 28 controls after the original 45 positions; see [migration details](PATCH_SCHEMA.md). Waveforms latch on note-on. Sine retains the original table interpolation; triangle is analytic, saw and square use polyBLEP edge correction. All remain subject to the oversampling/aliasing limit under deep phase modulation. Noise uses a per-operator xorshift32 state seeded from note, operator and deterministic note sequence number. It does not depend on wall time, and ratio/incoming phase modulation do not affect it.
+
+The shared output filter is a topology-preserving state-variable filter before gain/saturation. Cutoff and Q are smoothed, and modes crossfade over the same smoothing interval. Coefficients update once per output sample; filter state advances at the internal rate. Cutoff is capped at 45% of the output sample rate. Tiny state values are cleared to avoid denormals. Bypass preserves the old signal path exactly.
+
+The keyboard keeps source ownership across computer keys, independent captured pointer IDs, and MIDI port/channel/note IDs. Pointer movement hit-tests the key under each contact; leaving the keyboard releases that contact and re-entry can start another note. Delayed audio activation uses a per-press token so a cancelled press cannot restart. MIDI requests no SysEx, forwards velocity, defers note-off while CC64 is down, and releases only the affected input's notes on disconnect. Panic, blur and page hiding clear ownership and pedal state. Session storage retains a validated patch for the tab; PatchStore remains the only mutation authority.

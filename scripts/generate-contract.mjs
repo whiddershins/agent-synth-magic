@@ -9,8 +9,16 @@ for (let op = 1; op <= contract.operatorCount; op++) {
     parameters.push({ ...parameter, id, default: contract.initialOverrides[id] ?? parameter.default, operator: op });
   }
 }
+const legacyParameterCount = parameters.length;
+parameters.push(...contract.extensionGlobalParameters.map(p => ({ ...p, sinceVersion: 2 })));
+const extensionOperatorOffset = parameters.length;
+for (let op = 1; op <= contract.operatorCount; op++) {
+  for (const parameter of contract.extensionOperatorParameters) {
+    parameters.push({ ...parameter, id: `op${op}.${parameter.id}`, operator: op, sinceVersion: 2 });
+  }
+}
 const number = (value) => Number.isInteger(value) ? `${value}.0f` : `${value}f`;
-const cpp = `// Generated from contracts/instrument.json. Run npm run generate.\n#pragma once\n#include <array>\n\nnamespace agent_synth {\nstruct ParameterDefinition {\n    const char* id;\n    float minimum;\n    float maximum;\n    float initial;\n    bool integer;\n};\ninline constexpr int parameter_count = ${parameters.length};\ninline constexpr std::array<ParameterDefinition, parameter_count> parameter_definitions {{\n${parameters.map(p => `    {${JSON.stringify(p.id)}, ${number(p.min)}, ${number(p.max)}, ${number(p.default)}, ${Boolean(p.integer)}},`).join('\n')}\n}};\nstruct Routing {\n    std::array<unsigned, 6> inputs;\n    unsigned carriers;\n    int carrier_count;\n};\ninline constexpr std::array<Routing, ${contract.algorithms.length}> routings {{\n${contract.algorithms.map(a => {
+const cpp = `// Generated from contracts/instrument.json. Run npm run generate.\n#pragma once\n#include <array>\n#include <string_view>\n\nnamespace agent_synth {\nstruct ParameterDefinition {\n    const char* id;\n    float minimum;\n    float maximum;\n    float initial;\n    bool integer;\n};\ninline constexpr int parameter_schema_version = ${contract.schemaVersion};\ninline constexpr int legacy_parameter_count = ${legacyParameterCount};\ninline constexpr int extension_operator_offset = ${extensionOperatorOffset};\ninline constexpr int extension_operator_parameter_count = ${contract.extensionOperatorParameters.length};\ninline constexpr int parameter_count = ${parameters.length};\ninline constexpr std::array<ParameterDefinition, parameter_count> parameter_definitions {{\n${parameters.map(p => `    {${JSON.stringify(p.id)}, ${number(p.min)}, ${number(p.max)}, ${number(p.default)}, ${Boolean(p.integer)}},`).join('\n')}\n}};\nconstexpr int parameter_index(std::string_view id) noexcept {\n    for (int i = 0; i < parameter_count; ++i) if (id == parameter_definitions[i].id) return i;\n    return -1;\n}\nstruct Routing {\n    std::array<unsigned, 6> inputs;\n    unsigned carriers;\n    int carrier_count;\n};\ninline constexpr std::array<Routing, ${contract.algorithms.length}> routings {{\n${contract.algorithms.map(a => {
   const inputs = Array(6).fill(0);
   for (const [from, to] of a.edges) inputs[to - 1] |= 1 << (from - 1);
   const carriers = a.carriers.reduce((mask, op) => mask | (1 << (op - 1)), 0);

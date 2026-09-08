@@ -91,7 +91,7 @@ test('stale and invalid agent edits preserve the patch and revision', () => {
 });
 
 test('malformed patches and oversized auditions are rejected', () => {
-  for (const patch of [null, [], {}, { ...initialPatch(), schemaVersion: 2 }, { ...initialPatch(), name: '' }, { ...initialPatch(), parameters: {} }]) assert.throws(() => validatePatch(patch));
+  for (const patch of [null, [], {}, { ...initialPatch(), schemaVersion: 3 }, { ...initialPatch(), name: '' }, { ...initialPatch(), parameters: {} }]) assert.throws(() => validatePatch(patch));
   for (const score of [{ duration: 13, events: [] }, { duration: 1, events: [{ time: 0, type: 'on', note: 60 }] }, { duration: 1, events: [{ time: 2, type: 'off', note: 60 }] }]) {
     assert.throws(() => renderAudition(module, initialPatch(), score as never));
   }
@@ -119,4 +119,24 @@ test('WAV header and sample encoding match the rendered audition', () => {
   assert.equal(view.getInt16(44, true), -32768);
   assert.equal(view.getInt16(46, true), 0);
   assert.equal(view.getInt16(48, true), 32767);
+});
+
+test('version 1 patches migrate with the original parameter order and neutral additions', () => {
+  const legacy = { schemaVersion: 1, name: 'Legacy flute', parameters: Object.fromEntries(definitions.filter(p => !p.sinceVersion).map(p => [p.id, p.default])) };
+  legacy.parameters['op2.level'] = .17;
+  const migrated = validatePatch(legacy);
+  assert.equal(migrated.schemaVersion, 2);
+  assert.equal(definitions.filter(p => !p.sinceVersion).length, 45);
+  const originalOrder = ['algorithm', 'gain', 'feedback', ...Array.from({ length: 6 }, (_, i) => ['ratio','detune','level','attack','decay','sustain','release'].map(field => `op${i + 1}.${field}`)).flat()];
+  assert.deepEqual(definitions.slice(0,45).map(p => p.id), originalOrder);
+  for (const [id, value] of Object.entries(legacy.parameters)) assert.equal(migrated.parameters[id as keyof typeof migrated.parameters], value);
+  assert.equal(migrated.parameters['op1.waveform'], 0);
+  assert.equal(migrated.parameters['op1.delay'], 0);
+  assert.equal(migrated.parameters['op1.hold'], 0);
+  assert.equal(migrated.parameters['pitch.amount'], 0);
+  assert.equal(migrated.parameters['filter.type'], 0);
+  assert.throws(() => validatePatch({ ...legacy, parameters: { ...legacy.parameters, 'op1.waveform': 1 } }));
+  const invalid = structuredClone(migrated);
+  delete (invalid.parameters as Partial<typeof invalid.parameters>)['op1.waveform'];
+  assert.throws(() => validatePatch(invalid), /exactly/);
 });

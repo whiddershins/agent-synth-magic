@@ -13,6 +13,12 @@ function preset(name: string, algorithm: number, operators: number[][], feedback
   }));
   return validatePatch(patch);
 }
+function variation(name: string, changes: Partial<Patch['parameters']>): Patch {
+  const patch = initialPatch();
+  patch.name = name;
+  Object.assign(patch.parameters, changes);
+  return validatePatch(patch);
+}
 
 export const presets: readonly Patch[] = [
   preset('Glass garden', 0, [
@@ -38,4 +44,21 @@ export const presets: readonly Patch[] = [
     [1, .12, .002, .5, .08, .2], [5, .1, .004, .26, .02, .2], [7, .1, .001, .18, 0, .1],
   ], .6),
   initialPatch(),
+  variation('Breath & wood', {
+    algorithm: 3, gain: .38, 'op1.level': .8, 'op1.attack': .06, 'op1.sustain': .8, 'op1.release': .16,
+    'op4.waveform': 4, 'op4.level': .12, 'op4.attack': .04, 'op4.sustain': .7, 'op4.release': .14,
+    'filter.type': 1, 'filter.cutoff': 5800,
+  }),
+  variation('Falling drum', {
+    algorithm: 2, gain: .5, 'op1.ratio': .5, 'op1.level': .9, 'op1.attack': .001, 'op1.decay': .7,
+    'op1.sustain': 0, 'op1.release': .24, 'op2.waveform': 4, 'op2.level': .07, 'op2.attack': .001,
+    'op2.decay': .035, 'op2.sustain': 0, 'pitch.amount': 24, 'pitch.decay': .075,
+    'filter.type': 1, 'filter.cutoff': 4200,
+  }),
+  variation('Warm saw', {
+    'op1.waveform': 2, 'op1.level': .65, 'op1.attack': .035, 'op1.sustain': .7,
+    'op3.waveform': 2, 'op3.level': .6, 'op3.detune': 7, 'op3.attack': .035, 'op3.sustain': .7,
+    'op5.waveform': 1, 'op5.level': .22, 'op5.ratio': .5, 'op5.hold': .08, 'op5.sustain': .7,
+    'filter.type': 1, 'filter.cutoff': 1800, 'filter.resonance': 1.2,
+  }),
 ];

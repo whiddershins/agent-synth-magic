@@ -1,4 +1,4 @@
-# Agent Synth 0.1
+# Agent Synth 0.3
 
 ## Product
 
@@ -15,18 +15,20 @@ A playable six-operator FM instrument with a portable C++ engine and a vanilla w
 
 ## Instrument
 
-- Six sine operators using phase modulation; operator levels map to a maximum 8-radian modulation depth.
+- Six selectable sine/triangle/saw/square/noise operators using phase modulation; operator levels map to a maximum 8-radian modulation depth.
 - Four directed routing algorithms: three pairs, a six-operator stack, five modulators into one carrier, and two three-operator stacks.
-- Per operator: frequency ratio, cents detuning, level, attack, decay, sustain, release.
+- Per operator: waveform, frequency ratio, cents detuning, level, delay, attack, hold, decay, sustain, release.
+- A global pitch envelope with ±48-semitone depth and delay/attack/hold/decay/sustain/release stages.
+- A resonant output state-variable filter with bypass, low-pass, high-pass and band-pass modes.
 - Operator 6 self-feedback is delayed by one internal sample. This is distinct from the agent's evaluation loop.
 - Sixteen voices, deterministic voice selection, MIDI note/velocity input. Retriggering and voice replacement use a short fade.
 - 4x internal oversampling with a low-pass decimator. This reduces aliasing; it does not promise alias-free synthesis for every patch.
-- Parameter smoothing for pitch, levels, feedback, sustain and output gain. Envelope segment durations latch at segment entry. Routing changes apply to new notes.
+- Parameter smoothing for pitch, levels, feedback, sustain and output gain. Envelope segment durations latch at segment entry. Routing, waveform and pitch-depth changes apply to new notes.
 - Mono synthesis delivered to both output channels. Master gain has headroom and a final bounded output stage.
 
 ## User interface
 
-Enable audio, play an on-screen or computer keyboard, choose a starting patch, edit every parameter, audition a fixed phrase, import/export versioned JSON patches, and download rendered WAV auditions. Display the routing and live waveform. Use the native keyboard and pointer APIs without a framework.
+Enable audio, play an on-screen or computer keyboard, choose a starting patch, edit every parameter, audition a fixed phrase, import/export versioned JSON patches, and download rendered WAV auditions. Display the routing and live waveform. Use the native keyboard and pointer APIs without a framework. Dragging crosses discrete notes; each touch contact owns its note independently. Web MIDI input supports note/velocity, sustain pedal and device disconnection when available. The experimental agent panel is hidden by default.
 
 ## Agent-facing contract
 
@@ -45,4 +47,8 @@ The UI and agent facade share one patch store. Invalid or stale edits must leave
 
 ## Follow-on work
 
-Connect an audio-capable model to the existing control/audition facade, measure closed-loop improvement against a no-audio baseline, then add native JUCE standalone/AU wrappers. This first version does not include model calls, API credentials, DX7 emulation, MIDI device discovery, arbitrary routing, effects, or native plugin packaging.
+Connect an audio-capable model to the existing control/audition facade, measure closed-loop improvement against a no-audio baseline, then add native JUCE standalone/AU wrappers. This first version does not include model calls, API credentials, DX7 emulation, arbitrary routing, effects, or native plugin packaging.
+
+## Release additions accepted September 8, 2026
+
+Delay + hold + ADSR is the chosen multistage envelope design for this release. Freely editable envelope points remain future work. Publish the playable synth first and return to the agent feedback loop later. Schema-1 patches must migrate without changing any original values, serialized positions, or neutral-default sound.
