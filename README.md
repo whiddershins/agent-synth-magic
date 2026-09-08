@@ -135,7 +135,7 @@ The repository is private by default and no redistribution license is granted ye
 
 ## Expressive input
 
-Each keyboard plays the same patch through independently owned voices. Detune retunes its held notes; octave changes apply to new presses and update key labels. Computer keys play keyboard 1. A shared 16-voice limit applies across both keyboards and MIDI.
+Each keyboard plays the same patch through independently owned voices. Detune retunes its held notes; octave changes apply to new presses and update key labels. Each keyboard’s **Sustain latch** holds released notes until switched off; replaying a latched note retriggers it. Keys still physically held keep sounding when the latch turns off. Stop all clears both latches. Latches are performance state and are not saved with patches. Computer keys play keyboard 1. A shared 16-voice limit applies across both keyboards and MIDI.
 
 Enable MIDI, then choose Classic MIDI or an MPE lower/upper zone. Match the controller’s bend range (default MPE ±48 semitones, master/classic ±2). Standard RPN 6 can configure one zone per input; RPN 0 sets bend range. Master bend adds to member bend; member and master pressure multiply amplitude. CC74 moves modulator levels from 0.5× to 1.5×, so a carrier-only patch has no timbre response until a modulator is enabled. MPE+ extensions and MIDI 2.0 are not implemented. See [Roger Linn’s MPE explanation](https://www.rogerlinndesign.com/support/support-linnstrument-what-is-mpe).
 

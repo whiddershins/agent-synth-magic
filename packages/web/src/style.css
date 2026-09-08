@@ -267,3 +267,6 @@ footer { display: flex; align-items: baseline; justify-content: space-between; g
 .keyboard-panel .quiet-button { color: #dde6d4; }
 .keyboard-panel .mpe-options input, .keyboard-panel .mpe-options select { color: #23352e; }
 .operator-extra summary { cursor: pointer; font-size: 11px; line-height: 1.5; }
+
+.keyboard-panel .sustain-latch { border: 1px solid #71816a; border-radius: 5px; }
+.keyboard-panel .sustain-latch[aria-pressed="true"] { color: #183d31; background: #d2e5b6; border-color: #d2e5b6; }

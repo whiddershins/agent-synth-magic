@@ -4,11 +4,14 @@ const computerKeys: Record<string, number> = { KeyA: 60, KeyW: 61, KeyS: 62, Key
 const names = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B'];
 export const noteName = (note: number): string => `${names[note % 12]}${Math.floor(note / 12) - 1}`;
 
-export function createKeyboard(container: HTMLElement, notes: NoteInput, index: number, tuning: () => { cents: number; octave: number }, onNote: (name: string) => void) {
+export function createKeyboard(container: HTMLElement, notes: NoteInput, index: number, sustainButton: HTMLButtonElement, tuning: () => { cents: number; octave: number }, onNote: (name: string) => void) {
   const prefix = `keyboard${index}:`;
   const buttons = new Map<number, HTMLButtonElement>();
   const pointers = new Set<number>();
   const update = () => {
+    const latched = notes.sustainEnabled(prefix);
+    sustainButton.setAttribute('aria-pressed', String(latched));
+    sustainButton.textContent = `Sustain latch · ${latched ? 'On' : 'Off'}`;
     const { octave } = tuning();
     const active = new Set([...notes.notes(prefix), ...(index === 1 ? notes.notes('midi:').map(note => note-octave*12) : [])]);
     for (const [note, button] of buttons) {
@@ -20,6 +23,7 @@ export function createKeyboard(container: HTMLElement, notes: NoteInput, index: 
     const pitches = new Set([...notes.notes(prefix,true), ...(index === 1 ? notes.notes('midi:',true) : [])]);
     onNote(pitches.size ? [...pitches].map(noteName).join(' · ') : '—');
   };
+  sustainButton.addEventListener('click', () => notes.setSustain(prefix, !notes.sustainEnabled(prefix)));
   notes.subscribe(update); notes.onReset(() => pointers.clear());
   const press = (source: string, note: number) => {
     const { cents, octave } = tuning();

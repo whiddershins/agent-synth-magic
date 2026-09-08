@@ -333,3 +333,35 @@ test('MPE messages reach independent AudioWorklet voices with pitch, pressure an
   expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
   await page.screenshot({path:'build/expressive-mobile.png',fullPage:true});
 });
+
+test('each keyboard sustain latch holds released notes and Stop all clears both', async ({page}) => {
+  await page.goto('/');
+  await page.selectOption('#preset','5');
+  await page.getByRole('button',{name:'Enable audio'}).click();
+  const first=page.getByRole('button',{name:'Keyboard 1 sustain latch',exact:true});
+  const second=page.getByRole('button',{name:'Keyboard 2 sustain latch',exact:true});
+  await first.click(); await second.click();
+  await expect(first).toHaveAttribute('aria-pressed','true');
+  await expect(second).toHaveAttribute('aria-pressed','true');
+  await page.keyboard.press('a');
+  await page.locator('#keyboard2').getByRole('button',{name:'Play C4',exact:true}).click();
+  await expect(page.locator('#active-note')).toHaveText('C4');
+  await expect(page.locator('#active-note2')).toHaveText('C4');
+  await first.click();
+  await expect(page.locator('#active-note')).toHaveText('—');
+  await expect(page.locator('#active-note2')).toHaveText('C4');
+  await page.keyboard.down('a');
+  await second.click();
+  await expect(page.locator('#active-note')).toHaveText('C4');
+  await expect(page.locator('#active-note2')).toHaveText('—');
+  await first.click(); await page.keyboard.up('a');
+  await expect(page.locator('#active-note')).toHaveText('C4');
+  await expect(page.locator('#output-level')).not.toHaveText('−∞ dB');
+  await second.click();
+  await page.getByRole('button',{name:'Stop all'}).click();
+  await expect(first).toHaveAttribute('aria-pressed','false');
+  await expect(second).toHaveAttribute('aria-pressed','false');
+  await expect(page.locator('#active-note')).toHaveText('—');
+  await expect(page.locator('#active-note2')).toHaveText('—');
+  await expect(page.locator('#output-level')).toHaveText('−∞ dB');
+});
