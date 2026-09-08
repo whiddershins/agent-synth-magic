@@ -1,0 +1,54 @@
+name: Build and verify
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  instrument:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pinned local toolchain
+        run: npm run setup
+      - run: npm ci
+      - name: Native DSP, WebAssembly and parity checks
+        run: npm test
+      - name: Build frontend
+        run: npm run build:web
+      - name: Install test browser
+        run: npx playwright install --with-deps chromium
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: .cache/playwright
+      - name: Browser integration
+        run: npm run test:browser
+      - name: Native sanitizers
+        run: bash scripts/build-native.sh -DAGENT_SYNTH_SANITIZE=ON
+      - name: Save static application
+        uses: actions/upload-artifact@v4
+        with:
+          name: fm6-web
+          path: dist/
+      - name: Save browser failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-failures
+          path: test-results/
+          if-no-files-found: ignore

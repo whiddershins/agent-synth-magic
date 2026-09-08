@@ -1,0 +1,14 @@
+.tools/
+.cache/
+build/
+dist/
+node_modules/
+packages/web/public/wasm/*.wasm
+test-results/
+playwright-report/
+.DS_Store
+.env
+.env.*
+!.env.example
+*.wav
+*.f32

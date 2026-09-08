@@ -1,0 +1,31 @@
+{
+  "name": "agent-synth-magic",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22.12.0" },
+  "scripts": {
+    "setup": "bash scripts/setup-toolchain.sh",
+    "generate": "node scripts/generate-contract.mjs",
+    "check:contract": "node scripts/generate-contract.mjs --check",
+    "build:native": "bash scripts/build-native.sh",
+    "build:wasm": "bash scripts/build-wasm.sh",
+    "typecheck": "tsc --noEmit",
+    "dev": "vite --config packages/web/vite.config.ts",
+    "build:web": "npm run typecheck && vite build --config packages/web/vite.config.ts",
+    "build": "npm run check:contract && npm run build:wasm && npm run build:web",
+    "preview": "vite preview --config packages/web/vite.config.ts",
+    "test": "npm run check:contract && npm run build:native && npm run test:package && npm run build:wasm && npm run test:bridge",
+    "test:package": "bash scripts/test-package.sh",
+    "test:bridge": "node --import tsx --test tests/*.test.ts",
+    "test:browser:install": "PLAYWRIGHT_BROWSERS_PATH=.cache/playwright playwright install chromium",
+    "test:browser": "PLAYWRIGHT_BROWSERS_PATH=.cache/playwright playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "@types/node": "22.15.30",
+    "tsx": "4.20.3",
+    "typescript": "7.0.2",
+    "vite": "8.2.2"
+  }
+}
