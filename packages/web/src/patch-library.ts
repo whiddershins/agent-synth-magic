@@ -15,16 +15,22 @@ export function readSavedPatches(): Patch[] {
   return patches;
 }
 
-export function savePatch(patch: Patch): { patches: Patch[]; updated: boolean } {
+export class SavedPatchChangedError extends Error {}
+
+export function savePatch(patch: Patch, expected: Patch | null): { patch: Patch; patches: Patch[]; updated: boolean } {
   const checked = validatePatch(patch);
   // Read again for each write so another tab's recent saves are preserved.
   // An unreadable library must never be silently replaced with an empty one.
   const patches = readSavedPatches();
   const index = patches.findIndex(saved => saved.name === checked.name);
+  const current = patches[index] ?? null;
+  if (current ? !expected || !samePatch(current, expected) : expected !== null) {
+    throw new SavedPatchChangedError('Saved patches changed in another tab. Review the action below and try again.');
+  }
   if (index < 0) patches.push(checked);
   else patches[index] = checked;
   localStorage.setItem(libraryKey, JSON.stringify({ version: 1, patches }));
-  return { patches, updated: index >= 0 };
+  return { patch: checked, patches, updated: index >= 0 };
 }
 
 export function samePatch(left: Patch, right: Patch): boolean {

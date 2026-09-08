@@ -38,7 +38,7 @@ export function createNoteInput(audio: NoteAudio, onStart: () => Promise<void>, 
     release(source);
     if (!Number.isInteger(note) || note<0 || note>127) return;
     const latched = sustained.get(group);
-    if (latched) { sustained.delete(group); stopVoice(latched); }
+    if (latched) { sustained.delete(group); stopVoice(latched); update(); return; }
     let voice = voices.get(group);
     if (!voice) {
       voice = { id: nextId++, note, velocity, cents, pressure: 1, timbre: .5, started: false };

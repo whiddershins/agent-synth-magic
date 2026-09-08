@@ -47,6 +47,16 @@ select { width: 100%; background-color: var(--surface); border: 1px solid #cdd3c
 .patch-actions { display: flex; align-items: center; gap: 5px; }
 .patch-storage-note { font-size: 12px; color: var(--muted); line-height: 1.5; margin: 9px 0 0; }
 #save-patch { background: #e2e8da; border-color: #cbd5c3; }
+.save-dialog { color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 26px; width: min(440px, calc(100% - 32px)); box-shadow: 0 18px 70px #172c3233; }
+.save-dialog::backdrop { background: #142c2859; }
+.save-dialog h2 { font-size: 21px; }
+.save-dialog p { font-size: 13px; line-height: 1.6; color: var(--muted); }
+.save-dialog label { display: block; font-size: 12px; font-weight: 600; margin: 20px 0 7px; }
+.save-dialog input { width: 100%; padding: 11px 12px; border: 1px solid #b7c4b7; border-radius: 5px; background: white; }
+.save-dialog .save-action { min-height: 42px; }
+.save-dialog .save-error { color: #9e392d; }
+.save-dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 22px; }
+.save-confirm { background: var(--green); color: white; padding: 11px 15px; border-radius: 5px; font-size: 12px; font-weight: 600; }
 .quiet-button { background: transparent; border: 1px solid transparent; border-radius: 4px; padding: 9px 10px; font-size: 11px; font-weight: 500; white-space: nowrap; }
 .quiet-button:hover { background: #e6e9df; border-color: #d7ddcf; }
 .workbench { display: grid; grid-template-columns: minmax(0, 1fr) 242px; gap: 28px; padding-top: 24px; }

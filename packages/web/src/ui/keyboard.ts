@@ -7,7 +7,7 @@ export const noteName = (note: number): string => `${names[note % 12]}${Math.flo
 export function createKeyboard(container: HTMLElement, notes: NoteInput, index: number, sustainButton: HTMLButtonElement, tuning: () => { cents: number; octave: number }, onNote: (name: string) => void) {
   const prefix = `keyboard${index}:`;
   const buttons = new Map<number, HTMLButtonElement>();
-  const pointers = new Set<number>();
+  const pointers = new Map<number, number | null>();
   const update = () => {
     const latched = notes.sustainEnabled(prefix);
     sustainButton.setAttribute('aria-pressed', String(latched));
@@ -56,7 +56,7 @@ export function createKeyboard(container: HTMLElement, notes: NoteInput, index: 
     }
     button.addEventListener('pointerdown', (event) => {
       if (event.pointerType === 'mouse' && event.button !== 0) return;
-      event.preventDefault(); container.setPointerCapture(event.pointerId); pointers.add(event.pointerId); void press(`pointer:${event.pointerId}`, note);
+      event.preventDefault(); container.setPointerCapture(event.pointerId); pointers.set(event.pointerId, note); void press(`pointer:${event.pointerId}`, note);
     });
     button.addEventListener('keydown', (event) => { if ((event.code === 'Space' || event.code === 'Enter') && !event.repeat) { event.preventDefault(); void press(`button:${note}`, note); } });
     button.addEventListener('keyup', (event) => { if (event.code === 'Space' || event.code === 'Enter') { event.preventDefault(); release(`button:${note}`); } });
@@ -67,7 +67,10 @@ export function createKeyboard(container: HTMLElement, notes: NoteInput, index: 
   container.addEventListener('pointermove', (event) => {
     if (!pointers.has(event.pointerId)) return;
     const key = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>('.piano-key');
-    if (key && container.contains(key)) void press(`pointer:${event.pointerId}`, Number(key.dataset.note));
+    const note = key && container.contains(key) ? Number(key.dataset.note) : null;
+    if (pointers.get(event.pointerId) === note) return;
+    pointers.set(event.pointerId, note);
+    if (note !== null) void press(`pointer:${event.pointerId}`, note);
     else release(`pointer:${event.pointerId}`);
   });
   for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) container.addEventListener(type, (event) => {

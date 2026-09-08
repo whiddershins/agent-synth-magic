@@ -24,7 +24,7 @@ test('keyboard latches release independently and detune reaches their sustained 
   notes.setSustain('keyboard2:',false); assert.deepEqual(offs,[ons[0]!.id,ons[1]!.id]);
 });
 
-test('latch-off preserves physical owners and re-playing a latched pitch retriggers it', async () => {
+test('latch-off preserves physical owners and tapping a latched pitch toggles only that note off', async () => {
   const {notes,ons,offs}=fixture();
   notes.setSustain('keyboard1:',true);
   await notes.press('keyboard1:key:a',60,.8,0,'keyboard1:note:60');
@@ -32,14 +32,19 @@ test('latch-off preserves physical owners and re-playing a latched pitch retrigg
   notes.release('keyboard1:key:a'); notes.setSustain('keyboard1:',false);
   assert.equal(offs.length,0); assert.equal(ons.length,1);
   notes.setSustain('keyboard1:',true); notes.release('keyboard1:pointer:1');
+  await notes.press('keyboard1:key:s',62,.8,0,'keyboard1:note:62'); notes.release('keyboard1:key:s');
   await notes.press('keyboard1:key:a',60,.8,0,'keyboard1:note:60');
   assert.equal(ons.length,2); assert.deepEqual(offs,[ons[0]!.id]);
-  notes.setSustain('keyboard1:',false); assert.equal(offs.length,1);
-  notes.release('keyboard1:key:a'); assert.deepEqual(offs,[ons[0]!.id,ons[1]!.id]);
+  assert.deepEqual(notes.notes('keyboard1:'),[62]); assert.equal(notes.sustainEnabled('keyboard1:'),true);
+  notes.release('keyboard1:key:a');
+  await notes.press('keyboard1:key:a',60,.8,0,'keyboard1:note:60');
+  assert.equal(ons.length,3);
+  notes.setSustain('keyboard1:',false); assert.deepEqual(offs,[ons[0]!.id,ons[1]!.id]);
+  notes.release('keyboard1:key:a'); assert.deepEqual(offs,[ons[0]!.id,ons[1]!.id,ons[2]!.id]);
 });
 
 test('latched taps survive audio startup but latch-off and panic cancel pending voices', async () => {
-  for (const stop of ['none','off','panic']) {
+  for (const stop of ['none','off','panic','tap']) {
     let ready!:()=>void;
     const startup=new Promise<void>(resolve=>{ready=resolve;});
     const {notes,ons,panics}=fixture(()=>startup);
@@ -48,6 +53,7 @@ test('latched taps survive audio startup but latch-off and panic cancel pending 
     notes.release('keyboard1:pointer:1');
     if (stop==='off') notes.setSustain('keyboard1:',false);
     if (stop==='panic') notes.releaseAll();
+    if (stop==='tap') await notes.press('keyboard1:pointer:2',60,.8,0,'keyboard1:note:60');
     ready(); await pressing;
     assert.equal(ons.length,stop==='none' ? 1 : 0);
     if (stop==='panic') { assert.equal(panics(),1); assert.equal(notes.sustainEnabled('keyboard1:'),false); assert.equal(notes.sustainEnabled('keyboard2:'),false); }

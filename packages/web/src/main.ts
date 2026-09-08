@@ -4,7 +4,7 @@ import { PatchStore, definitions } from './patch';
 import type { Patch } from './patch';
 import { instrument } from './parameters.generated';
 import { presets } from './presets';
-import { libraryKey, readSavedPatches, savePatch, samePatch } from './patch-library';
+import { libraryKey, readSavedPatches, samePatch } from './patch-library';
 import { AudioController } from './audio/controller';
 import { testPhrase, wavBytes } from './audio/audition';
 import type { Audition, Score } from './audio/audition';
@@ -14,6 +14,7 @@ import { createNoteInput } from './ui/note-input';
 import { connectMidi } from './ui/midi';
 import { renderRouting } from './ui/routing';
 import { startScope } from './ui/scope';
+import { createSavePatchDialog } from './ui/save-patch';
 
 document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
   <main class="instrument">
@@ -25,9 +26,9 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
     <section class="patch-bar" aria-label="Patch selection">
       <div class="patch-selector"><label class="eyebrow" for="preset">PATCHES</label><select id="preset"><option value="">Custom patch</option></select></div>
       <div class="patch-identity"><label class="eyebrow" for="patch-name">PATCH NAME</label><input id="patch-name" maxlength="80" spellcheck="false" /><span id="revision" class="revision">REV 00</span></div>
-      <div class="patch-actions"><button class="quiet-button" id="undo" title="Undo the last edit">↶ Undo</button><button class="quiet-button" id="save-patch" title="Save in this browser's patch menu. Rename the patch to save a separate copy.">Save patch</button><button class="quiet-button" id="import-patch">Load patch</button><button class="quiet-button" id="export-patch">Export JSON ↓</button><input id="patch-file" type="file" accept=".json,application/json" hidden /></div>
+      <div class="patch-actions"><button class="quiet-button" id="undo" title="Undo the last edit">↶ Undo</button><button class="quiet-button" id="save-patch" title="Choose a name and save a new patch or replace an existing one.">Save patch…</button><button class="quiet-button" id="import-patch">Load patch</button><button class="quiet-button" id="export-patch">Export JSON ↓</button><input id="patch-file" type="file" accept=".json,application/json" hidden /></div>
     </section>
-    <p class="patch-storage-note" id="patch-storage-status" role="status" aria-live="polite">Save patch keeps it in this browser’s menu. Export JSON makes a backup or transfers it to another device.</p>
+    <p class="patch-storage-note" id="patch-storage-status" role="status" aria-live="polite">Save patch… lets you choose a name. Export JSON makes a backup or transfers it to another device.</p>
 
     <section id="agent-panel" class="agent-panel" aria-label="Agent connection" hidden></section>
 
@@ -44,7 +45,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
       </aside>
     </div>
 
-    <section class="keyboard-panel" aria-label="Playable keyboard"><div class="keyboard-heading"><div><span class="eyebrow">PLAY</span><span class="keyboard-help">Touch, drag to glide across keys, or use <kbd>A</kbd>–<kbd>K</kbd>.</span></div><div class="keyboard-right"><span id="active-note">—</span><button id="panic" class="quiet-button">Stop all <kbd>esc</kbd></button></div></div><div class="midi-bar"><button id="enable-midi" class="quiet-button">Enable MIDI</button><select id="midi-input" aria-label="MIDI input" hidden></select><span id="midi-status">Connect a MIDI keyboard, or play with multiple fingers.</span></div><div class="mpe-options"><label>MIDI mode<select id="midi-mode"><option value="classic">Classic MIDI</option><option value="lower">MPE · lower zone (2–16)</option><option value="upper">MPE · upper zone (1–15)</option></select></label><label>Member bend ± semitones<input id="midi-member-range" type="number" min="1" max="96" step="1" value="48" /></label><label>Master / classic bend ± semitones<input id="midi-master-range" type="number" min="1" max="48" step="1" value="2" /></label></div><p class="micro-copy">MPE: per-note pitch bend, pressure → volume, and CC74 → modulation depth. Match the bend range on your controller. MIDI RPN messages can configure a zone or bend range.</p><div class="keyboard-heading"><span class="eyebrow">KEYBOARD 1 · A–K</span><button id="keyboard1-sustain" class="quiet-button sustain-latch" aria-label="Keyboard 1 sustain latch" aria-pressed="false" title="Holds notes after you release the keys. Turn off to release them; envelope sustain still applies.">Sustain latch · Off</button></div><div class="keyboard-tuning" id="keyboard1-controls"></div><div class="keyboard-scroll"><div id="keyboard" class="keyboard"></div></div><div class="keyboard-heading"><span class="eyebrow">KEYBOARD 2 · TOUCH / MOUSE</span><div class="keyboard-right"><span id="active-note2">—</span><button id="keyboard2-sustain" class="quiet-button sustain-latch" aria-label="Keyboard 2 sustain latch" aria-pressed="false" title="Holds notes after you release the keys. Turn off to release them; envelope sustain still applies.">Sustain latch · Off</button></div></div><div class="keyboard-tuning" id="keyboard2-controls"></div><div class="keyboard-scroll"><div id="keyboard2" class="keyboard"></div></div></section>
+    <section class="keyboard-panel" aria-label="Playable keyboard"><div class="keyboard-heading"><div><span class="eyebrow">PLAY</span><span class="keyboard-help">Touch, drag to glide across keys, or use <kbd>A</kbd>–<kbd>K</kbd>.</span></div><div class="keyboard-right"><span id="active-note">—</span><button id="panic" class="quiet-button">Stop all <kbd>esc</kbd></button></div></div><div class="midi-bar"><button id="enable-midi" class="quiet-button">Enable MIDI</button><select id="midi-input" aria-label="MIDI input" hidden></select><span id="midi-status">Connect a MIDI keyboard, or play with multiple fingers.</span></div><div class="mpe-options"><label>MIDI mode<select id="midi-mode"><option value="classic">Classic MIDI</option><option value="lower">MPE · lower zone (2–16)</option><option value="upper">MPE · upper zone (1–15)</option></select></label><label>Member bend ± semitones<input id="midi-member-range" type="number" min="1" max="96" step="1" value="48" /></label><label>Master / classic bend ± semitones<input id="midi-master-range" type="number" min="1" max="48" step="1" value="2" /></label></div><p class="micro-copy">MPE: per-note pitch bend, pressure → volume, and CC74 → modulation depth. Match the bend range on your controller. MIDI RPN messages can configure a zone or bend range.</p><div class="keyboard-heading"><span class="eyebrow">KEYBOARD 1 · A–K</span><button id="keyboard1-sustain" class="quiet-button sustain-latch" aria-label="Keyboard 1 sustain latch" aria-pressed="false" title="Holds released notes. Tap a sustained note again to turn it off, or switch the latch off to release all its notes.">Sustain latch · Off</button></div><div class="keyboard-tuning" id="keyboard1-controls"></div><div class="keyboard-scroll"><div id="keyboard" class="keyboard"></div></div><div class="keyboard-heading"><span class="eyebrow">KEYBOARD 2 · TOUCH / MOUSE</span><div class="keyboard-right"><span id="active-note2">—</span><button id="keyboard2-sustain" class="quiet-button sustain-latch" aria-label="Keyboard 2 sustain latch" aria-pressed="false" title="Holds released notes. Tap a sustained note again to turn it off, or switch the latch off to release all its notes.">Sustain latch · Off</button></div></div><div class="keyboard-tuning" id="keyboard2-controls"></div><div class="keyboard-scroll"><div id="keyboard2" class="keyboard"></div></div></section>
     <footer><p id="status" role="status" aria-live="polite">Ready when you are. Enable audio or play a key.</p><span class="footer-mark">FM / 6 <span>·</span> 0.4</span></footer>
   </main>`;
 
@@ -159,19 +160,14 @@ function download(contents: BlobPart, mime: string, name: string): void {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 const filename = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'fm6-patch';
-element('save-patch').addEventListener('click', () => {
-  try {
-    const snapshot = store.read();
-    const result = savePatch(snapshot.patch);
-    savedPatches = result.patches;
-    rebuildPatchMenu(); update(snapshot.patch, snapshot.revision);
-    element('patch-storage-status').textContent = `${result.updated ? 'Updated' : 'Saved'} “${snapshot.patch.name}” in this browser’s patch menu. Rename it to save a separate copy.`;
-    message(`Saved ${snapshot.patch.name} in the patch menu.`);
-  } catch {
-    element('patch-storage-status').textContent = 'Patch could not be saved in this browser. Storage may be full, blocked, or unreadable. Use Export JSON to keep a copy.';
-    onError('Patch was not saved. Use Export JSON to keep a copy.');
-  }
+const openSaveDialog = createSavePatchDialog(store, result => {
+  savedPatches = result.patches;
+  const snapshot = store.read();
+  rebuildPatchMenu(); update(snapshot.patch, snapshot.revision);
+  element('patch-storage-status').textContent = `${result.updated ? 'Updated' : 'Saved'} “${result.patch.name}” in this browser’s patch menu.`;
+  message(`Saved ${result.patch.name} in the patch menu.`);
 });
+element('save-patch').addEventListener('click', openSaveDialog);
 window.addEventListener('storage', event => {
   if (event.key !== libraryKey && event.key !== null) return;
   try {

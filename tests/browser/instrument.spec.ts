@@ -200,12 +200,15 @@ test('Save patch adds a persistent menu entry, updates it, and keeps named copie
   await page.goto('/');
   let downloads = 0;
   page.on('download', () => { downloads++; });
-  await page.locator('#patch-name').fill('Rain bells');
-  await page.locator('#patch-name').press('Tab');
   const ratio = page.getByRole('spinbutton', { name: 'Operator 1 Ratio value', exact: true });
   await ratio.fill('2.5'); await ratio.press('Tab');
+  const beforeSave = await page.evaluate(() => window.synth.readPatch());
+  await page.getByRole('button', { name: 'Save patch…', exact: true }).click();
+  await page.getByRole('dialog').getByRole('textbox',{name:'Patch name',exact:true}).fill('Rain bells');
+  expect(await page.evaluate(() => window.synth.readPatch())).toEqual(beforeSave);
+  await page.getByRole('button',{name:'Save new patch',exact:true}).click();
   const original = await page.evaluate(() => window.synth.readPatch().patch);
-  await page.getByRole('button', { name: 'Save patch', exact: true }).click();
+  expect(original.name).toBe('Rain bells');
   await expect(page.locator('#patch-storage-status')).toContainText('Saved “Rain bells”');
   await expect(page.locator('#preset optgroup[label="Saved in this browser"] option')).toHaveText(['Rain bells']);
   expect(downloads).toBe(0);
@@ -216,12 +219,14 @@ test('Save patch adds a persistent menu entry, updates it, and keeps named copie
   expect(await reopened.evaluate(() => window.synth.readPatch().patch)).toEqual(original);
   const newRatio = reopened.getByRole('spinbutton', { name: 'Operator 1 Ratio value', exact: true });
   await newRatio.fill('3.5'); await newRatio.press('Tab');
-  await reopened.getByRole('button', { name: 'Save patch', exact: true }).click();
+  await reopened.getByRole('button', { name: 'Save patch…', exact: true }).click();
+  await expect(reopened.locator('#save-patch-action')).toContainText('replace your saved “Rain bells”');
+  await reopened.getByRole('button',{name:'Replace saved patch',exact:true}).click();
   await expect(reopened.locator('#patch-storage-status')).toContainText('Updated “Rain bells”');
   await expect(reopened.locator('#preset optgroup[label="Saved in this browser"] option')).toHaveCount(1);
-  await reopened.locator('#patch-name').fill('Rain bells variation');
-  await reopened.locator('#patch-name').press('Tab');
-  await reopened.getByRole('button', { name: 'Save patch', exact: true }).click();
+  await reopened.getByRole('button', { name: 'Save patch…', exact: true }).click();
+  await reopened.getByRole('dialog').getByRole('textbox',{name:'Patch name',exact:true}).fill('Rain bells variation');
+  await reopened.getByRole('button',{name:'Save new patch',exact:true}).click();
   await expect(reopened.locator('#preset optgroup[label="Saved in this browser"] option')).toHaveText(['Rain bells', 'Rain bells variation']);
   await reopened.selectOption('#preset', '0');
   expect(await reopened.evaluate(() => window.synth.readPatch().patch.parameters['op1.ratio'])).toBe(1);
@@ -242,10 +247,36 @@ test('failed browser storage never reports a patch as saved', async ({ page }) =
   });
   await page.goto('/');
   const before = await page.evaluate(() => window.synth.readPatch());
-  await page.getByRole('button', { name: 'Save patch', exact: true }).click();
-  await expect(page.locator('#patch-storage-status')).toContainText('Patch could not be saved');
+  await page.getByRole('button', { name: 'Save patch…', exact: true }).click();
+  await page.getByRole('dialog').getByRole('textbox',{name:'Patch name',exact:true}).fill('Unsaved rename');
+  await page.getByRole('button',{name:'Save new patch',exact:true}).click();
+  await expect(page.getByRole('dialog').getByRole('alert')).toContainText('Patch could not be saved');
   await expect(page.locator('#preset optgroup[label="Saved in this browser"] option')).toHaveCount(0);
   expect(await page.evaluate(() => window.synth.readPatch())).toEqual(before);
+});
+
+test('cancelling the save dialog preserves the patch and latched notes', async ({page}) => {
+  await page.setViewportSize({width:390,height:844});
+  await page.goto('/');
+  await page.getByRole('button',{name:'Enable audio'}).click();
+  const latch=page.getByRole('button',{name:'Keyboard 1 sustain latch',exact:true});
+  await latch.click(); await page.keyboard.press('a');
+  const before=await page.evaluate(()=>window.synth.readPatch());
+  const open=page.getByRole('button',{name:'Save patch…',exact:true});
+  await open.click();
+  const dialog=page.getByRole('dialog',{name:'Save patch',exact:true});
+  const name=dialog.getByRole('textbox',{name:'Patch name',exact:true});
+  await expect(name).toBeFocused();
+  await name.fill(''); await expect(dialog.getByRole('button',{name:'Save new patch'})).toBeDisabled();
+  await name.fill('An unsaved copy');
+  const box=await dialog.boundingBox();
+  expect(box!.x).toBeGreaterThanOrEqual(0); expect(box!.x+box!.width).toBeLessThanOrEqual(390);
+  await name.press('Escape');
+  await expect(dialog).not.toBeVisible(); await expect(open).toBeFocused();
+  await expect(latch).toHaveAttribute('aria-pressed','true');
+  await expect(page.locator('#active-note')).toHaveText('C4');
+  expect(await page.evaluate(()=>window.synth.readPatch())).toEqual(before);
+  await expect(page.locator('#preset optgroup[label="Saved in this browser"] option')).toHaveCount(0);
 });
 
 test('operator effects collapse independently and annotations save with every new control', async ({ page }) => {
@@ -270,7 +301,8 @@ test('operator effects collapse independently and annotations save with every ne
   await mix.fill('20'); await mix.press('Tab');
   const annotation=page.getByRole('textbox',{name:'Operator 1 annotation',exact:true});
   await annotation.fill('The body: raise cutoff for more bite. <b>Text only</b>'); await annotation.press('Tab');
-  await page.getByRole('button',{name:'Save patch',exact:true}).click();
+  await page.getByRole('button',{name:'Save patch…',exact:true}).click();
+  await page.getByRole('button',{name:'Save new patch',exact:true}).click();
   const saved=await page.evaluate(() => window.synth.readPatch().patch);
   expect(saved.annotations.op1).toContain('<b>Text only</b>');
   expect(saved.parameters['op1.pitch.amount']).toBe(9);
@@ -402,4 +434,25 @@ test('leaving the synth preserves latched notes and technical explanations retai
   await page.getByRole('button',{name:'Stop all'}).click();
   await expect(latch).toHaveAttribute('aria-pressed','false');
   await expect(page.locator('#active-note')).toHaveText('—');
+});
+
+test('tapping a sustained note toggles it off without changing the latch or other voices', async ({page}) => {
+  await page.goto('/'); await page.selectOption('#preset','5');
+  await page.getByRole('button',{name:'Enable audio'}).click();
+  const latch=page.getByRole('button',{name:'Keyboard 1 sustain latch',exact:true});
+  await latch.click();
+  await page.getByRole('button',{name:'Keyboard 2 sustain latch',exact:true}).click();
+  const first=page.locator('#keyboard');
+  const c=first.getByRole('button',{name:'Play C4',exact:true});
+  await c.click(); await first.getByRole('button',{name:'Play E4',exact:true}).click();
+  await page.locator('#keyboard2').getByRole('button',{name:'Play C4',exact:true}).click();
+  const box=(await c.boundingBox())!;
+  await page.mouse.move(box.x+box.width/2,box.y+box.height-12); await page.mouse.down();
+  await expect(page.locator('#active-note')).toHaveText('E4');
+  await page.mouse.move(box.x+box.width/2+2,box.y+box.height-10); await page.mouse.up();
+  await expect(page.locator('#active-note')).toHaveText('E4');
+  await expect(page.locator('#active-note2')).toHaveText('C4');
+  await expect(latch).toHaveAttribute('aria-pressed','true');
+  await c.click(); await expect(page.locator('#active-note')).toHaveText('E4 · C4');
+  await page.keyboard.press('a'); await expect(page.locator('#active-note')).toHaveText('E4');
 });
