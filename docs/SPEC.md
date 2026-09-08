@@ -28,7 +28,7 @@ A playable six-operator FM instrument with a portable C++ engine and a vanilla w
 
 ## User interface
 
-Enable audio, play an on-screen or computer keyboard, choose a starting patch, edit every parameter, audition a fixed phrase, import/export versioned JSON patches, and download rendered WAV auditions. Display the routing and live waveform. Use the native keyboard and pointer APIs without a framework. Dragging crosses discrete notes; each touch contact owns its note independently. Web MIDI input supports note/velocity, sustain pedal and device disconnection when available. The experimental agent panel is hidden by default.
+Enable audio, play an on-screen or computer keyboard, choose a starting patch, edit every parameter, audition a fixed phrase, save named patches in a persistent browser-local patch menu, import/export versioned JSON patches, and download rendered WAV auditions. Display the routing and live waveform. Use the native keyboard and pointer APIs without a framework. Dragging crosses discrete notes; each touch contact owns its note independently. Web MIDI input supports note/velocity, sustain pedal and device disconnection when available. The experimental agent panel is hidden by default.
 
 ## Agent-facing contract
 

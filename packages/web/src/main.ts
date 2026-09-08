@@ -4,6 +4,7 @@ import { PatchStore, definitions } from './patch';
 import type { Patch } from './patch';
 import { instrument } from './parameters.generated';
 import { presets } from './presets';
+import { libraryKey, readSavedPatches, savePatch, samePatch } from './patch-library';
 import { AudioController } from './audio/controller';
 import { testPhrase, wavBytes } from './audio/audition';
 import type { Audition, Score } from './audio/audition';
@@ -21,10 +22,11 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
     </header>
 
     <section class="patch-bar" aria-label="Patch selection">
-      <div class="patch-selector"><label class="eyebrow" for="preset">STARTING PATCH</label><select id="preset"><option value="">Custom patch</option></select></div>
+      <div class="patch-selector"><label class="eyebrow" for="preset">PATCHES</label><select id="preset"><option value="">Custom patch</option></select></div>
       <div class="patch-identity"><label class="eyebrow" for="patch-name">PATCH NAME</label><input id="patch-name" maxlength="80" spellcheck="false" /><span id="revision" class="revision">REV 00</span></div>
-      <div class="patch-actions"><button class="quiet-button" id="undo" title="Undo the last edit">↶ Undo</button><button class="quiet-button" id="import-patch">Load patch</button><button class="quiet-button" id="export-patch">Save patch ↓</button><input id="patch-file" type="file" accept=".json,application/json" hidden /></div>
+      <div class="patch-actions"><button class="quiet-button" id="undo" title="Undo the last edit">↶ Undo</button><button class="quiet-button" id="save-patch" title="Save in this browser's patch menu. Rename the patch to save a separate copy.">Save patch</button><button class="quiet-button" id="import-patch">Load patch</button><button class="quiet-button" id="export-patch">Export JSON ↓</button><input id="patch-file" type="file" accept=".json,application/json" hidden /></div>
     </section>
+    <p class="patch-storage-note" id="patch-storage-status" role="status" aria-live="polite">Save patch keeps it in this browser’s menu. Export JSON makes a backup or transfers it to another device.</p>
 
     <section id="agent-panel" class="agent-panel" aria-label="Agent connection" hidden></section>
 
@@ -85,7 +87,21 @@ const extraControls = definitions.filter(p => p.id.startsWith('pitch.') || p.id.
   return control;
 });
 const presetSelect = element<HTMLSelectElement>('preset');
-presets.forEach((patch, index) => presetSelect.add(new Option(patch.name, String(index))));
+let savedPatches: Patch[] = [];
+try { savedPatches = readSavedPatches(); }
+catch { element('patch-storage-status').textContent = 'Saved patches could not be read. Your current patch can still be exported as JSON.'; }
+function rebuildPatchMenu(): void {
+  presetSelect.replaceChildren(new Option('Custom patch', ''));
+  if (savedPatches.length) {
+    const saved = document.createElement('optgroup'); saved.label = 'Saved in this browser';
+    savedPatches.forEach((patch, index) => saved.append(new Option(patch.name, `saved:${index}`)));
+    presetSelect.append(saved);
+  }
+  const starting = document.createElement('optgroup'); starting.label = 'Starting patches';
+  presets.forEach((patch, index) => starting.append(new Option(patch.name, String(index))));
+  presetSelect.append(starting);
+}
+rebuildPatchMenu();
 const algorithmSelect = element<HTMLSelectElement>('algorithm');
 instrument.algorithms.forEach((algorithm) => algorithmSelect.add(new Option(algorithm.name, String(algorithm.id))));
 const routing = document.getElementById('routing')! as unknown as SVGSVGElement;
@@ -97,8 +113,9 @@ function update(patch: Patch, revision: number): void {
   extraControls.forEach(control => control.update(patch));
   element<HTMLInputElement>('patch-name').value = patch.name;
   element('revision').textContent = `REV ${String(revision).padStart(2, '0')}`;
-  const selected = presets.findIndex((preset) => JSON.stringify(preset.parameters) === JSON.stringify(patch.parameters) && preset.name === patch.name);
-  presetSelect.value = selected >= 0 ? String(selected) : '';
+  const saved = savedPatches.findIndex(preset => samePatch(preset, patch));
+  const selected = presets.findIndex(preset => samePatch(preset, patch));
+  presetSelect.value = saved >= 0 ? `saved:${saved}` : selected >= 0 ? String(selected) : '';
   algorithmSelect.value = String(patch.parameters.algorithm);
   if (lastAlgorithm !== patch.parameters.algorithm) { renderRouting(routing, patch.parameters.algorithm); lastAlgorithm = patch.parameters.algorithm; }
 }
@@ -117,7 +134,7 @@ algorithmSelect.addEventListener('change', () => store.edit({ algorithm: Number(
 presetSelect.addEventListener('change', () => {
   if (presetSelect.value === '') return;
   keyboard.releaseAll();
-  const selected = presets[Number(presetSelect.value)]!;
+  const selected = presetSelect.value.startsWith('saved:') ? savedPatches[Number(presetSelect.value.slice(6))]! : presets[Number(presetSelect.value)]!;
   store.replace(selected);
   message(`Loaded ${selected.name}.`);
 });
@@ -134,10 +151,30 @@ function download(contents: BlobPart, mime: string, name: string): void {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 const filename = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'fm6-patch';
+element('save-patch').addEventListener('click', () => {
+  try {
+    const snapshot = store.read();
+    const result = savePatch(snapshot.patch);
+    savedPatches = result.patches;
+    rebuildPatchMenu(); update(snapshot.patch, snapshot.revision);
+    element('patch-storage-status').textContent = `${result.updated ? 'Updated' : 'Saved'} “${snapshot.patch.name}” in this browser’s patch menu. Rename it to save a separate copy.`;
+    message(`Saved ${snapshot.patch.name} in the patch menu.`);
+  } catch {
+    element('patch-storage-status').textContent = 'Patch could not be saved in this browser. Storage may be full, blocked, or unreadable. Use Export JSON to keep a copy.';
+    onError('Patch was not saved. Use Export JSON to keep a copy.');
+  }
+});
+window.addEventListener('storage', event => {
+  if (event.key !== libraryKey && event.key !== null) return;
+  try {
+    savedPatches = readSavedPatches(); rebuildPatchMenu();
+    const snapshot = store.read(); update(snapshot.patch, snapshot.revision);
+  } catch { element('patch-storage-status').textContent = 'Saved patches could not be refreshed. Export JSON can keep your current patch.'; }
+});
 element('export-patch').addEventListener('click', () => {
   const { patch } = store.read();
   download(JSON.stringify(patch, null, 2) + '\n', 'application/json', `${filename(patch.name)}.json`);
-  message(`Saved ${patch.name}.`);
+  message(`JSON download requested for ${patch.name}.`);
 });
 const fileInput = element<HTMLInputElement>('patch-file');
 element('import-patch').addEventListener('click', () => fileInput.click());

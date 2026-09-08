@@ -58,7 +58,7 @@ docs/AGENT_API.md              Structured control and audition API
 - A separate ±48-semitone pitch envelope and resonant low-pass, high-pass, or band-pass filter.
 - Smoothed continuous controls; routing, wave shape, and pitch depth changes apply to new notes.
 - Drag glissando, independent touch contacts, and MIDI input with velocity and sustain pedal in supporting browsers.
-- Nine starting patches, JSON patch import/export, undo, and a fixed audition phrase.
+- Nine starting patches, a browser-local saved patch menu, JSON patch import/export, undo, and a fixed audition phrase.
 - WAV export and peak, RMS, and spectral-centroid measurements from the rendered audio.
 - `window.synth` exposes versioned control discovery, patch snapshots, revision-checked edits, and offline rendering.
 
@@ -125,7 +125,7 @@ Edit `contracts/instrument.json`, then run `npm run generate`. Commit both gener
 
 Oversampling reduces aliasing, but extreme ratios, high notes, and deep feedback can still alias. This version has no effects, MIDI pitch-bend/CC mapping, or arbitrary modulation graph. Delay, attack, and hold durations latch at note-on; decay and release latch at segment entry. Noise ignores ratio and incoming phase modulation. Saw/square edge correction and oversampling reduce aliasing but cannot eliminate it under deep phase modulation. Auditions are bounded to 12 seconds and 256 note events; the default five-second phrase can truncate long releases. Choose a longer custom score when evaluating those patches.
 
-Web MIDI requires browser support and permission; Safari/iPad Safari currently does not expose it. The on-screen keyboard uses independent Pointer Events for touch playing and glissando. Browser tests cover multiple emulated contacts; physical iPad and MIDI hardware have not been certified. The last patch is retained for the current tab; Save patch exports a durable copy.
+Web MIDI requires browser support and permission; Safari/iPad Safari currently does not expose it. The on-screen keyboard uses independent Pointer Events for touch playing and glissando. Browser tests cover multiple emulated contacts; physical iPad and MIDI hardware have not been certified. The last working patch is retained for the current tab. **Save patch** stores a named entry in the patch menu using browser-local storage and persists between visits. Saving the same name updates that entry; renaming before saving creates a separate copy. **Export JSON** downloads a portable backup. Saved patches belong to this browser and site; clearing browser data removes them, and they do not sync between devices.
 
 Schema 2 imports complete schema-1 patches with neutral defaults; see [the migration](docs/PATCH_SCHEMA.md).
 

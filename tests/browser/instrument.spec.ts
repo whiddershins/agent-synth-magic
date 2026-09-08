@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { readFile } from 'node:fs/promises';
 
 test('compiled synth plays, responds to controls, and releases on Stop', async ({ page }) => {
   const errors: string[] = [];
@@ -37,8 +38,11 @@ test('audition contains PCM and downloads a valid WAV and patch', async ({ page 
   await page.getByRole('button', { name: 'WAV ↓', exact: true }).click();
   expect((await wavDownload).suggestedFilename()).toBe('glass-garden-audition.wav');
   const patchDownload = page.waitForEvent('download');
-  await page.getByRole('button', { name: 'Save patch ↓', exact: true }).click();
-  expect((await patchDownload).suggestedFilename()).toBe('glass-garden.json');
+  await page.getByRole('button', { name: 'Export JSON ↓', exact: true }).click();
+  const exported = await patchDownload;
+  expect(exported.suggestedFilename()).toBe('glass-garden.json');
+  const exportedPatch = JSON.parse(await readFile((await exported.path())!, 'utf8'));
+  expect(exportedPatch).toEqual(await page.evaluate(() => window.synth.readPatch().patch));
   const rendered = await page.evaluate(async () => {
     const result = await window.synth.render({ score: { duration: .2, events: [{ time: 0, type: 'on', note: 60, velocity: .8 }, { time: .1, type: 'off', note: 60 }] } });
     return { length: result.samples.length, peak: result.measurements.peak };
@@ -176,4 +180,56 @@ test('MIDI handles velocity-zero, sustain, shared keys and device disconnect', a
   await page.evaluate(() => (window as unknown as { unplugMidi(): void }).unplugMidi());
   await expect(page.locator('#active-note')).toHaveText('—');
   await expect(page.locator('#midi-status')).toContainText('Connect a keyboard');
+});
+
+test('Save patch adds a persistent menu entry, updates it, and keeps named copies', async ({ page, context }) => {
+  await page.goto('/');
+  let downloads = 0;
+  page.on('download', () => { downloads++; });
+  await page.locator('#patch-name').fill('Rain bells');
+  await page.locator('#patch-name').press('Tab');
+  const ratio = page.getByRole('spinbutton', { name: 'Operator 1 Ratio value', exact: true });
+  await ratio.fill('2.5'); await ratio.press('Tab');
+  const original = await page.evaluate(() => window.synth.readPatch().patch);
+  await page.getByRole('button', { name: 'Save patch', exact: true }).click();
+  await expect(page.locator('#patch-storage-status')).toContainText('Saved “Rain bells”');
+  await expect(page.locator('#preset optgroup[label="Saved in this browser"] option')).toHaveText(['Rain bells']);
+  expect(downloads).toBe(0);
+  await page.close();
+  const reopened = await context.newPage();
+  await reopened.goto('/');
+  await reopened.selectOption('#preset', { label: 'Rain bells' });
+  expect(await reopened.evaluate(() => window.synth.readPatch().patch)).toEqual(original);
+  const newRatio = reopened.getByRole('spinbutton', { name: 'Operator 1 Ratio value', exact: true });
+  await newRatio.fill('3.5'); await newRatio.press('Tab');
+  await reopened.getByRole('button', { name: 'Save patch', exact: true }).click();
+  await expect(reopened.locator('#patch-storage-status')).toContainText('Updated “Rain bells”');
+  await expect(reopened.locator('#preset optgroup[label="Saved in this browser"] option')).toHaveCount(1);
+  await reopened.locator('#patch-name').fill('Rain bells variation');
+  await reopened.locator('#patch-name').press('Tab');
+  await reopened.getByRole('button', { name: 'Save patch', exact: true }).click();
+  await expect(reopened.locator('#preset optgroup[label="Saved in this browser"] option')).toHaveText(['Rain bells', 'Rain bells variation']);
+  await reopened.selectOption('#preset', '0');
+  expect(await reopened.evaluate(() => window.synth.readPatch().patch.parameters['op1.ratio'])).toBe(1);
+  await reopened.selectOption('#preset', { label: 'Rain bells' });
+  expect(await reopened.evaluate(() => window.synth.readPatch().patch.parameters['op1.ratio'])).toBe(3.5);
+  await reopened.reload();
+  await expect(reopened.locator('#preset')).toHaveValue('saved:0');
+  await reopened.close();
+});
+
+test('failed browser storage never reports a patch as saved', async ({ page }) => {
+  await page.addInitScript(() => {
+    const original = Storage.prototype.setItem;
+    Storage.prototype.setItem = function(key, value) {
+      if (key === 'fm6.saved-patches') throw new DOMException('Storage full', 'QuotaExceededError');
+      return original.call(this, key, value);
+    };
+  });
+  await page.goto('/');
+  const before = await page.evaluate(() => window.synth.readPatch());
+  await page.getByRole('button', { name: 'Save patch', exact: true }).click();
+  await expect(page.locator('#patch-storage-status')).toContainText('Patch could not be saved');
+  await expect(page.locator('#preset optgroup[label="Saved in this browser"] option')).toHaveCount(0);
+  expect(await page.evaluate(() => window.synth.readPatch())).toEqual(before);
 });
