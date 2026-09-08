@@ -107,16 +107,20 @@ export class AudioController {
   panic(): void { this.#node?.port.postMessage({ type: 'panic' }); this.stopPlayback(); }
   stopPlayback(): void { this.#playback?.stop(); this.#playback = undefined; }
 
-  async render(patch: Patch, score: Score = testPhrase, sampleRate = 48000): Promise<Audition> {
+  async render(patch: Patch, score: Score = testPhrase, sampleRate = 48000, signal?: AbortSignal): Promise<Audition> {
+    signal?.throwIfAborted();
     const checked = validatePatch(patch);
     const checkedScore = validateScore(score, sampleRate);
     if (this.#auditionBusy) throw new Error('An audition is already rendering.');
     this.#auditionBusy = true;
     try {
       const module = await loadModule();
+      signal?.throwIfAborted();
       return await new Promise<Audition>((resolve, reject) => {
         const worker = new Worker(new URL('./audition-worker.ts', import.meta.url), { type: 'module' });
-        const finish = () => { clearTimeout(timer); worker.terminate(); };
+        const finish = () => { clearTimeout(timer); signal?.removeEventListener('abort', abort); worker.terminate(); };
+        const abort = () => { finish(); reject(new Error('Audition cancelled.')); };
+        signal?.addEventListener('abort', abort, { once: true });
         const timer = setTimeout(() => { finish(); reject(new Error('Audition rendering timed out.')); }, 30000);
         worker.onmessage = ({ data }) => { finish(); if (data.error) reject(new Error(data.error)); else resolve(data.result); };
         worker.onerror = (event) => { finish(); reject(new Error(event.message || 'Audition rendering failed.')); };
@@ -125,8 +129,10 @@ export class AudioController {
     } finally { this.#auditionBusy = false; }
   }
 
-  async play(audition: Audition): Promise<void> {
+  async play(audition: Audition, signal?: AbortSignal): Promise<void> {
+    signal?.throwIfAborted();
     await this.start();
+    signal?.throwIfAborted();
     const context = this.context!;
     this.panic();
     const buffer = context.createBuffer(1, audition.samples.length, audition.sampleRate);

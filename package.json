@@ -3,7 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=22.12.0" },
+  "engines": {
+    "node": ">=22.12.0"
+  },
   "scripts": {
     "setup": "bash scripts/setup-toolchain.sh",
     "generate": "node scripts/generate-contract.mjs",
@@ -19,13 +21,16 @@
     "test:package": "bash scripts/test-package.sh",
     "test:bridge": "node --import tsx --test tests/*.test.ts",
     "test:browser:install": "PLAYWRIGHT_BROWSERS_PATH=.cache/playwright playwright install chromium",
-    "test:browser": "PLAYWRIGHT_BROWSERS_PATH=.cache/playwright playwright test"
+    "test:browser": "PLAYWRIGHT_BROWSERS_PATH=.cache/playwright playwright test",
+    "agent": "node --import tsx scripts/agent.ts"
   },
   "devDependencies": {
     "@playwright/test": "1.63.0",
     "@types/node": "22.15.30",
+    "@types/ws": "8.18.1",
     "tsx": "4.20.3",
     "typescript": "7.0.2",
-    "vite": "8.2.2"
+    "vite": "8.2.2",
+    "ws": "8.21.3"
   }
 }

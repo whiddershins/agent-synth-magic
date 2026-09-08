@@ -78,11 +78,12 @@ export class PatchStore {
     return snapshot;
   }
 
-  edit(changes: Record<string, unknown>, expectedRevision = this.#revision): Snapshot {
+  edit(changes: Record<string, unknown>, expectedRevision = this.#revision, name?: string): Snapshot {
     if (!record(changes)) throw new Error('Changes must be a parameter-to-value object.');
     for (const id of Object.keys(changes)) if (!definitionById.has(id as ParameterId)) throw new Error(`Unknown parameter: ${id}`);
     const patch = this.read().patch;
     Object.assign(patch.parameters, changes);
+    if (name !== undefined) patch.name = name;
     return this.replace(patch, expectedRevision);
   }
 

@@ -210,3 +210,18 @@ footer { display: flex; align-items: baseline; justify-content: space-between; g
   #status { font-size: 9px; }
 }
 @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+
+.agent-panel { margin: 0 0 24px; padding: 14px 18px; border: 1px solid var(--line, #c5c6b8); border-radius: 8px; background: #eeefe5; font-size: 12px; }
+.agent-heading, .agent-pairing, .agent-grant, .agent-request { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 16px; }
+.agent-heading strong { font-size: 10px; letter-spacing: .12em; }
+.agent-heading > button { margin-left: auto; }
+.agent-pairing, .agent-grant, .agent-request { margin-top: 14px; padding-top: 12px; border-top: 1px solid #d5d7c9; }
+.agent-pairing code { user-select: all; font-size: 14px; }
+.agent-pairing details { flex-basis: 100%; }
+.agent-pairing summary { cursor: pointer; }
+.agent-pairing textarea { box-sizing: border-box; width: 100%; min-height: 150px; margin-top: 8px; padding: 10px; font: 12px/1.5 monospace; border: 1px solid #bdc2af; background: #fafbf5; border-radius: 4px; }
+.agent-request label { display: flex; gap: 5px; align-items: center; }
+.agent-request input { accent-color: #596846; }
+.agent-grant > span { flex: 1 1 250px; line-height: 1.5; }
+.agent-activity { padding-left: 18px; margin: 12px 0 0; color: #59604e; line-height: 1.7; overflow-wrap: anywhere; }
+@media (max-width: 600px) { .agent-heading > span { flex-basis: 100%; } .agent-heading > button { margin-left: 0; } .agent-request label { flex-basis: 100%; } }

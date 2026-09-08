@@ -26,7 +26,7 @@ The worklet copies samples directly into the host-supplied output arrays. It han
 
 An ordinary worker instantiates the same WebAssembly module separately for each audition. It applies a complete validated patch, schedules MIDI events at rounded sample offsets, and renders PCM to a fixed final length. Simultaneous events retain caller order. No live voice state is shared, so repeated evaluations do not interfere with the playable instrument.
 
-The worker calculates peak/RMS over the full clip and a magnitude-weighted spectral centroid from up to eight 2,048-sample Hann-windowed FFT frames. The centroid is a descriptive measurement, not a score for how good a sound is. WAV export is mono 16-bit PCM. The agent receives float32 PCM before WAV quantization.
+The worker calculates peak/RMS over the full clip and a magnitude-weighted spectral centroid from up to eight 2,048-sample Hann-windowed FFT frames. The centroid is a descriptive measurement, not a score for how good a sound is. WAV export is mono 16-bit PCM. The in-page facade returns float32 PCM; external agents receive mono PCM16 WAV with the exact render inputs and measurements.
 
 ## State and agent boundary
 
@@ -34,7 +34,21 @@ The worker calculates peak/RMS over the full clip and a magnitude-weighted spect
 
 The generated parameter contract contains stable names, ranges, units, defaults, and descriptions. It describes the effect of controls without binding the engine to any AI provider. `window.synth` provides the current host adapter; a later native host can expose the same operations through a local service or tool interface.
 
-The next model integration should retain a candidate's exact patch, score, sample rate, audio and user preference together. Compare bounded candidates, keep the best patch, and measure whether audio feedback improves results over an equal-budget no-audio baseline. No autonomous model loop is implemented in version 0.1.
+The local `packages/bridge` Node service attaches to Vite's development and preview
+HTTP server. It validates loopback address, Host and browser Origin, pairs each
+browser tab independently, and checks grants before forwarding operations over
+an authenticated WebSocket. Browser operations recheck grant scope/expiry and
+call the existing patch/audio authority. No request reaches the audio callback.
+
+All session state is in memory. Single-use pairing codes require explicit browser
+approval; host and agent credentials are separate. The bridge retains bounded
+mutation receipts to avoid duplicate edits/playback and bounded WAV caches owned
+by the rendering agent. The browser terminates offline workers on cancellation,
+checks cancellation before playback after asynchronous startup, and stops an
+agent's audition on revocation. Tab closure invalidates the session. See
+[the protocol](AGENT_API.md) for lifetimes and limits.
+
+A connected model should retain a candidate's exact patch, score, sample rate, audio and user preference together. Compare bounded candidates, keep the best patch, and measure whether audio feedback improves results over an equal-budget no-audio baseline. The instrument itself does not implement an autonomous model loop; the paired agent owns evaluation, candidate selection, and truthful reporting of audio ingestion.
 
 ## Native follow-on
 

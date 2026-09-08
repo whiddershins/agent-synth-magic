@@ -30,7 +30,7 @@ Enable audio, play an on-screen or computer keyboard, choose a starting patch, e
 
 ## Agent-facing contract
 
-Describe controls and their units/ranges; read the current patch/revision; validate and atomically apply edits; render a supplied patch and note sequence; return PCM with peak/RMS/brightness measurements; restore an earlier patch. A narrow JavaScript facade exposes these operations without UI automation.
+Describe controls and their units/ranges; read the current patch/revision; validate and atomically apply edits; render a supplied patch and note sequence; return PCM with peak/RMS/brightness measurements; restore an earlier patch. A narrow JavaScript facade exposes these operations without UI automation. The [accepted agent integration](AGENT_INTEGRATION.md) adds a local paired HTTP/WebSocket bridge and CLI over the same authority, including authenticated WAV delivery and separately permitted speaker playback.
 
 The UI and agent facade share one patch store. Invalid or stale edits must leave the current patch unchanged. Imported patch names are text, never executable markup. Render requests have explicit duration and event-count limits.
 

@@ -2,7 +2,7 @@
 
 A six-operator FM synthesizer with a C++20 DSP package, a WebAssembly build, and a vanilla HTML/CSS/TypeScript interface. The browser plays the compiled C++ engine in an AudioWorklet. Independent offline renders provide reproducible audio and measurements for an agent-controlled sound-design loop.
 
-The first version includes the instrument and its structured control interface. Connecting an audio model and building native JUCE/AU wrappers are follow-on work; there are no model calls or API keys in this version.
+The instrument includes a local API for your existing agent: pair once, approve its permissions, then let it edit the visible patch, render/download auditions, and play them. The synth makes no model calls and needs no provider API key. Audio-capable model evaluation and native JUCE/AU wrappers remain follow-on work.
 
 ## Quick start
 
@@ -19,7 +19,19 @@ Open <http://127.0.0.1:5173>, enable audio, then play the on-screen keyboard or 
 
 `npm run setup` installs pinned CMake/Ninja and Emscripten 4.0.20 into the ignored `.tools/` directory. It does not change your shell profile or install global packages. Node dependencies are locked in `package-lock.json`; npm uses the ignored project cache.
 
-After editing C++, run `npm run build:wasm` and reload the page. Vite hot-reloads frontend changes. The production static application is written to `dist/`, including its `.wasm` binary. Serve it with `npm run preview` or any static HTTPS host. The application has no remote runtime dependencies.
+After editing C++, run `npm run build:wasm` and reload the page. Vite hot-reloads frontend changes. The production static application is written to `dist/`, including its `.wasm` binary. Serve it with `npm run preview` for the local agent API, or any static HTTPS host for the standalone instrument. The application has no remote runtime dependencies.
+
+## Connect your agent
+
+Click **Connect agent** in the instrument and copy its pairing prompt to your
+agent. The agent runs the provided `npm run agent -- connect ...` command; approve
+its requested permissions in the page. It can then discover controls, make batch
+edits, download real WAV auditions, and play them through the open instrument.
+Disconnect at any time. Connections expire after 30 minutes or when the tab closes.
+
+See [the CLI and HTTP API](docs/AGENT_API.md) and
+[the sound-design loop](docs/AGENT_INTEGRATION.md). The bridge carries actual audio;
+whether your agent can ingest and evaluate that audio depends on its model/tools.
 
 ## Layout
 
@@ -27,6 +39,7 @@ After editing C++, run `npm run build:wasm` and reload the page. Vite hot-reload
 contracts/instrument.json      Parameter/routing source of truth
 packages/dsp/                 Portable CMake package and native tests
 packages/web/                 Vanilla web instrument and audio bridge
+packages/bridge/              Local agent API, pairing, permissions, sessions
 scripts/                      Toolchain, code generation, builds
 tests/                        Native/Wasm parity and browser integration
 docs/SPEC.md                  Version 0.1 scope and acceptance criteria

@@ -1,4 +1,5 @@
 import './style.css';
+import { agentPanel } from './agent/panel';
 import { PatchStore, definitions } from './patch';
 import type { Patch } from './patch';
 import { instrument } from './parameters.generated';
@@ -23,6 +24,8 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
       <div class="patch-identity"><label class="eyebrow" for="patch-name">PATCH NAME</label><input id="patch-name" maxlength="80" spellcheck="false" /><span id="revision" class="revision">REV 00</span></div>
       <div class="patch-actions"><button class="quiet-button" id="undo" title="Undo the last edit">↶ Undo</button><button class="quiet-button" id="import-patch">Load patch</button><button class="quiet-button" id="export-patch">Save patch ↓</button><input id="patch-file" type="file" accept=".json,application/json" hidden /></div>
     </section>
+
+    <section id="agent-panel" class="agent-panel" aria-label="Agent connection"></section>
 
     <div class="workbench">
       <section class="operators" aria-label="Six operators"><div class="section-label"><span>01—06 / OPERATORS</span><span>Shape the tone. Then the movement.</span></div><div id="operator-grid" class="operator-grid"></div></section>
@@ -176,9 +179,9 @@ startScope(element<HTMLCanvasElement>('scope'), audio, element('output-level'));
 const facade = Object.freeze({
   describe: () => structuredClone({ ...instrument, parameters: definitions, audition: { maxDurationSeconds: 12, maxEvents: 256, defaultScore: testPhrase } }),
   readPatch: () => store.read(),
-  async applyChanges(changes: Record<string, unknown>, expectedRevision: number) {
+  async applyChanges(changes: Record<string, unknown>, expectedRevision: number, name?: string) {
     if (!Number.isInteger(expectedRevision)) throw new Error('expectedRevision is required. Call readPatch() first.');
-    const snapshot = store.edit(changes, expectedRevision);
+    const snapshot = store.edit(changes, expectedRevision, name);
     await lastSync;
     return snapshot;
   },
@@ -193,3 +196,6 @@ const facade = Object.freeze({
 });
 declare global { interface Window { synth: typeof facade } }
 window.synth = facade;
+
+const agent = agentPanel(element('agent-panel'), facade, audio, ensureAudio);
+store.subscribe(({ revision, patch }) => agent.send({ type: 'patch_changed', revision, name: patch.name }));
