@@ -20,7 +20,7 @@ function variation(name: string, changes: Partial<Patch['parameters']>): Patch {
   return validatePatch(patch);
 }
 
-export const presets: readonly Patch[] = [
+const startingPatches: Patch[] = [
   preset('Glass garden', 0, [
     [1, .9, .004, 1.4, .08, 1.2], [3.5, .31, .002, .45, .015, .4],
     [2, .35, .006, 1.1, .04, 1.4], [7, .14, .003, .3, .01, .35],
@@ -61,4 +61,23 @@ export const presets: readonly Patch[] = [
     'op5.waveform': 1, 'op5.level': .22, 'op5.ratio': .5, 'op5.hold': .08, 'op5.sustain': .7,
     'filter.type': 1, 'filter.cutoff': 1800, 'filter.resonance': 1.2,
   }),
+  variation('Living glass', {
+    algorithm: 0, gain: .32, 'op1.level': .7, 'op1.sustain': .7, 'op1.attack': .06,
+    'op2.level': .2, 'op2.ratio': 3.5, 'op2.sustain': .35,
+    'op2.pitch.enabled': 1, 'op2.pitch.amount': 7, 'op2.pitch.decay': .8,
+    'op3.waveform': 1, 'op3.level': .18, 'op3.sustain': .7,
+    'op3.filter.type': 1, 'op3.filter.cutoff': 2800,
+    'lfo.rate': .7, 'lfo.route1.target': 8, 'lfo.route1.amount': 28,
+    'reverb.mix': 22, 'reverb.decay': 2.4, 'keyboard2.detune': -9,
+  }),
 ];
+const patchNotes: Record<string, string[]> = {
+  'Glass garden': ['Main bell body. Lengthen Decay for a longer ring.', 'The 3.5 ratio creates the glassy, inharmonic attack. Lower Level softens it.', 'An octave-high ringing layer. Lower Level darkens the bell.', 'Adds a short bright edge to the octave layer.', 'Quiet fundamental tail. Increase Level for a rounder finish.', 'A very brief high-frequency strike; more Level sharpens the onset.'],
+  'Breath & wood': ['The pitched body. Attack changes how gently it speaks.', '', '', 'Quiet noise carrier adds breath. Raise Level for more air.', '', ''],
+  'Living glass': ['Sustained bell body; raise Sustain for a steadier foundation.', 'Pitch envelope sweeps this modulator through seven semitones. Reduce depth for a calmer opening.', 'Soft triangle layer with its own low-pass filter. Raise cutoff to uncover more harmonics.', '', '', ''],
+};
+export const presets: readonly Patch[] = startingPatches.map(patch => {
+  const notes=patchNotes[patch.name];
+  if (notes) notes.forEach((note,index) => { patch.annotations[`op${index+1}`]=note; });
+  return validatePatch(patch);
+});

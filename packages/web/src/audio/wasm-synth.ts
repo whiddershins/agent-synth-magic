@@ -13,6 +13,9 @@ interface SynthExports extends WebAssembly.Exports {
   synth_apply_patch(): number;
   synth_note_on(note: number, velocity: number): number;
   synth_note_off(note: number): void;
+  synth_note_on_id(id: number, note: number, velocity: number, cents: number): number;
+  synth_note_off_id(id: number): void;
+  synth_expression(id: number, cents: number, pressure: number, timbre: number): number;
   synth_panic(): void;
   synth_render(frames: number): number;
   synth_output_buffer(): number;
@@ -48,6 +51,16 @@ export class WasmSynth {
   noteOff(note: number): void {
     if (!Number.isInteger(note) || note < 0 || note > 127) throw new Error('Invalid note.');
     this.exports.synth_note_off(note);
+  }
+  noteOnId(id: number, note: number, velocity: number, cents = 0): void {
+    if (!Number.isInteger(id) || id>2147483647 || !Number.isInteger(note) || !this.exports.synth_note_on_id(id, note, velocity, cents)) throw new Error('Invalid note identity, pitch or velocity.');
+  }
+  noteOffId(id: number): void {
+    if (!Number.isInteger(id) || id>2147483647 || id<0) throw new Error('Invalid note identity.');
+    this.exports.synth_note_off_id(id);
+  }
+  expression(id: number, cents: number, pressure = 1, timbre = .5): void {
+    if (!Number.isInteger(id) || id>2147483647 || !this.exports.synth_expression(id, cents, pressure, timbre)) throw new Error('Invalid note expression.');
   }
   panic(): void { this.exports.synth_panic(); }
   render(frames: number): Float32Array {

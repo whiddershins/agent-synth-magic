@@ -29,6 +29,9 @@ SYNTH_EXPORT float* synth_patch_buffer() { return staging.values.data(); }
 SYNTH_EXPORT int synth_apply_patch() { return synth.set_patch(staging) ? 1 : 0; }
 SYNTH_EXPORT int synth_note_on(int note, float velocity) { return synth.note_on(note, velocity) ? 1 : 0; }
 SYNTH_EXPORT void synth_note_off(int note) { synth.note_off(note); }
+SYNTH_EXPORT int synth_note_on_id(int id, int note, float velocity, float cents) { return synth.note_on_id(id, note, velocity, cents) ? 1 : 0; }
+SYNTH_EXPORT void synth_note_off_id(int id) { synth.note_off_id(id); }
+SYNTH_EXPORT int synth_expression(int id, float cents, float pressure, float timbre) { return synth.expression(id, cents, pressure, timbre) ? 1 : 0; }
 SYNTH_EXPORT void synth_panic() { synth.panic(); }
 SYNTH_EXPORT int synth_render(int frames) {
     if (frames < 0 || frames > capacity) return 0;

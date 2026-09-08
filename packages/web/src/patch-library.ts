@@ -28,5 +28,5 @@ export function savePatch(patch: Patch): { patches: Patch[]; updated: boolean } 
 }
 
 export function samePatch(left: Patch, right: Patch): boolean {
-  return left.name === right.name && JSON.stringify(left.parameters) === JSON.stringify(right.parameters);
+  return left.name === right.name && JSON.stringify(left.parameters) === JSON.stringify(right.parameters) && JSON.stringify(left.annotations) === JSON.stringify(right.annotations);
 }

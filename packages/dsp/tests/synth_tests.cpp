@@ -258,6 +258,68 @@ void waveforms_pitch_and_filter() {
     }
 }
 
+void expressive_identity_and_pitch() {
+    Synth synth;
+    auto patch=sine_patch(); patch.op(0, attack)=.001f;
+    require(synth.set_patch(patch), "expressive fixture accepted");
+    require(synth.note_on_id(1000,69,1) && synth.note_on_id(1001,69,1,-9), "same pitch accepts independent IDs");
+    require(synth.active_voices()==2, "equal pitches occupy separate voices");
+    std::vector<float> samples(48000);
+    synth.note_off_id(1001); synth.render(samples);
+    require(synth.active_voices()==1, "one release preserves equal-pitch sibling");
+    require(synth.expression(1000,1200,1,.5f), "per-note octave bend accepted");
+    synth.render(samples); synth.render(samples);
+    int crossings=0;
+    for (int i=1;i<48000;++i) if (samples[i-1]<=0 && samples[i]>0) ++crossings;
+    require(std::abs(crossings-880)<=1, "per-note pitch bend reaches 880 Hz");
+    require(!synth.expression(1000,std::numeric_limits<float>::quiet_NaN(),1,.5f), "nonfinite expression rejected");
+    require(synth.expression(1000,1200,0,.5f), "pressure accepted");
+    synth.render(samples); require(peak(std::span<const float>(samples).last(1024))<1e-6f, "pressure can silence one voice");
+}
+
+void operator_modulation_and_reverb() {
+    auto base=sine_patch();
+    auto expressive=base;
+    expressive.op(0,op_pitch_enabled)=1; expressive.op(0,op_pitch_amount)=12;
+    expressive.op(0,op_pitch_sustain)=1; expressive.op(0,op_pitch_attack)=.001f;
+    require(render_note(base,127)!=render_note(expressive,127), "operator pitch envelope changes audio");
+    expressive.op(0,op_pitch_enabled)=0;
+    require(render_note(base,127)==render_note(expressive,127), "disabled operator pitch is neutral despite retained settings");
+    expressive.op(0,op_filter_type)=1; expressive.op(0,op_filter_cutoff)=80;
+    require(rms(render_note(expressive,127))<rms(render_note(base,127))*.2, "operator low-pass attenuates its carrier");
+    expressive=base;
+    expressive.values[parameter_index("lfo.route1.target")]=1;
+    expressive.values[parameter_index("lfo.route1.amount")]=50;
+    require(render_note(base,127)!=render_note(expressive,127), "assigned LFO changes audio");
+    expressive.values[parameter_index("lfo.waveform")]=4;
+    expressive.values[parameter_index("lfo.rate")]=20;
+    expressive.values[parameter_index("reverb.mix")]=35;
+    expressive.values[parameter_index("reverb.decay")]=2;
+    expressive.op(0,op_filter_type)=2;
+    expressive.op(0,op_filter_cutoff)=150;
+    const auto whole=render_note(expressive,8000);
+    require(whole==render_note(expressive,127), "LFO, operator filter and reverb are block-independent");
+    require(rms(std::span<const float>(whole).last(1024))>.00001, "reverb survives voice release");
+    Synth synth;
+    require(synth.set_patch(expressive) && synth.note_on_id(1000,60,1), "effect allocation fixture accepted");
+    std::array<float,512> block{};
+    monitor_allocations=true;
+    for (int i=0;i<100;++i) { (void)synth.expression(1000,static_cast<float>(i),.8f,.7f); synth.render(block); }
+    synth.panic();
+    for (int i=0;i<100;++i) synth.render(block);
+    monitor_allocations=false;
+    require(allocations==0 && deallocations==0,"expression and effects never allocate or free");
+    require(peak(block)==0, "panic clears the reverb tail");
+    for (double rate : {8000.0,192000.0}) {
+        require(synth.prepare(rate), "effect extreme sample rate accepted");
+        expressive.values[parameter_index("reverb.mix")]=60; expressive.values[parameter_index("reverb.decay")]=8;
+        for (int op=0;op<6;++op) { expressive.op(op,op_filter_type)=3; expressive.op(op,op_filter_resonance)=10; expressive.op(op,op_filter_cutoff)=20000; }
+        require(synth.set_patch(expressive), "effect extreme patch accepted");
+        for (int note=100;note<116;++note) require(synth.note_on_id(note,note,1,9600), "extreme note bend accepted");
+        for (int i=0;i<40;++i) { synth.render(block); for (float sample:block) require(std::isfinite(sample) && std::abs(sample)<=1,"extreme effects finite and bounded"); }
+    }
+}
+
 void c_abi_bounds() {
     require(synth_init(48000) == 1, "C ABI initializes");
     require(synth_parameter_count() == parameter_count, "C ABI agrees with schema");
@@ -277,6 +339,8 @@ int main() {
     routing_and_repeatability();
     polyphony_and_extremes();
     allocation_free_audio_path();
+    expressive_identity_and_pitch();
+    operator_modulation_and_reverb();
     c_abi_bounds();
     std::cout << "Passed " << checks << " assertions across tuning, envelopes, validation, routing, polyphony, allocation, and ABI tests.\n";
 }

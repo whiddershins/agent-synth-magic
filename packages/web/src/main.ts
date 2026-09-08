@@ -10,6 +10,7 @@ import { testPhrase, wavBytes } from './audio/audition';
 import type { Audition, Score } from './audio/audition';
 import { makeControl, operatorControls } from './ui/controls';
 import { createKeyboard } from './ui/keyboard';
+import { createNoteInput } from './ui/note-input';
 import { connectMidi } from './ui/midi';
 import { renderRouting } from './ui/routing';
 import { startScope } from './ui/scope';
@@ -36,13 +37,15 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         <section class="routing-panel"><div class="section-label"><label for="algorithm">SIGNAL ROUTING</label><span class="tiny-dot"></span></div><select id="algorithm"></select><svg id="routing" viewBox="0 0 240 158" role="img"></svg><div class="routing-legend"><span><i class="legend-carrier"></i>Carrier</span><span><i class="legend-modulator"></i>Modulator</span></div><p class="micro-copy">Routing changes apply to new notes.</p><div id="feedback-control"></div></section>
         <section class="pitch-panel"><div class="section-label"><span>PITCH ENVELOPE</span></div><div id="pitch-depth"></div><details><summary>Delay · hold · ADSR</summary><div id="pitch-controls" class="envelope-controls"></div></details><p class="micro-copy">Depth applies to new notes. Zero keeps the played pitch.</p></section>
         <section class="filter-panel"><div class="section-label"><span>TONE FILTER</span></div><div id="filter-controls"></div></section>
+        <section class="lfo-panel"><div class="section-label"><span>LFO MODULATION</span></div><div id="lfo-controls"></div><p class="micro-copy">Four routes share one LFO. Depth is a percentage of the range shown in each target. Zero depth leaves the target unchanged.</p></section>
+        <section class="reverb-panel"><div class="section-label"><span>REVERB</span></div><div id="reverb-controls"></div><p class="micro-copy">A shared room after the synth. Mix 0% clears the tail.</p></section>
         <section class="output-panel"><div class="section-label"><span>OUTPUT</span><span id="output-level">−∞ dB</span></div><canvas id="scope" aria-label="Live output waveform" role="img"></canvas><div id="gain-control"></div><div class="engine-readout"><span id="audio-format">Audio off</span><span>16 voices</span></div></section>
         <section class="audition-panel"><div class="section-label"><span>AUDITION</span><span>5 SEC</span></div><p>Hear the same phrase across three registers and a chord.</p><button class="audition-button" id="render-audition"><span aria-hidden="true">▶</span> Render & listen</button><div id="audition-result" hidden><p id="audition-source"></p><dl class="measurements"><div><dt>Peak</dt><dd id="audition-peak">—</dd></div><div><dt>RMS</dt><dd id="audition-rms">—</dd></div><div><dt>Brightness</dt><dd id="audition-brightness">—</dd></div></dl><p class="micro-copy">Brightness: spectral centroid, not a quality score.</p><div class="audition-actions"><button id="replay" class="quiet-button">↻ Replay</button><button id="download-wav" class="quiet-button">WAV ↓</button></div></div></section>
       </aside>
     </div>
 
-    <section class="keyboard-panel" aria-label="Playable keyboard"><div class="keyboard-heading"><div><span class="eyebrow">PLAY</span><span class="keyboard-help">Touch, drag to glide across keys, or use <kbd>A</kbd>–<kbd>K</kbd>.</span></div><div class="keyboard-right"><span id="active-note">—</span><button id="panic" class="quiet-button">Stop all <kbd>esc</kbd></button></div></div><div class="midi-bar"><button id="enable-midi" class="quiet-button">Enable MIDI</button><select id="midi-input" aria-label="MIDI input" hidden></select><span id="midi-status">Connect a MIDI keyboard, or play with multiple fingers.</span></div><div class="keyboard-scroll"><div id="keyboard" class="keyboard"></div></div></section>
-    <footer><p id="status" role="status" aria-live="polite">Ready when you are. Enable audio or play a key.</p><span class="footer-mark">FM / 6 <span>·</span> 0.3</span></footer>
+    <section class="keyboard-panel" aria-label="Playable keyboard"><div class="keyboard-heading"><div><span class="eyebrow">PLAY</span><span class="keyboard-help">Touch, drag to glide across keys, or use <kbd>A</kbd>–<kbd>K</kbd>.</span></div><div class="keyboard-right"><span id="active-note">—</span><button id="panic" class="quiet-button">Stop all <kbd>esc</kbd></button></div></div><div class="midi-bar"><button id="enable-midi" class="quiet-button">Enable MIDI</button><select id="midi-input" aria-label="MIDI input" hidden></select><span id="midi-status">Connect a MIDI keyboard, or play with multiple fingers.</span></div><div class="mpe-options"><label>MIDI mode<select id="midi-mode"><option value="classic">Classic MIDI</option><option value="lower">MPE · lower zone (2–16)</option><option value="upper">MPE · upper zone (1–15)</option></select></label><label>Member bend ± semitones<input id="midi-member-range" type="number" min="1" max="96" step="1" value="48" /></label><label>Master / classic bend ± semitones<input id="midi-master-range" type="number" min="1" max="48" step="1" value="2" /></label></div><p class="micro-copy">MPE: per-note pitch bend, pressure → volume, and CC74 → modulation depth. Match the bend range on your controller. MIDI RPN messages can configure a zone or bend range.</p><div class="keyboard-tuning" id="keyboard1-controls"></div><div class="keyboard-scroll"><div id="keyboard" class="keyboard"></div></div><div class="keyboard-heading"><span class="eyebrow">KEYBOARD 2 · TOUCH / MOUSE</span><span id="active-note2">—</span></div><div class="keyboard-tuning" id="keyboard2-controls"></div><div class="keyboard-scroll"><div id="keyboard2" class="keyboard"></div></div></section>
+    <footer><p id="status" role="status" aria-live="polite">Ready when you are. Enable audio or play a key.</p><span class="footer-mark">FM / 6 <span>·</span> 0.4</span></footer>
   </main>`;
 
 const element = <T extends HTMLElement>(id: string): T => document.getElementById(id)! as T;
@@ -73,16 +76,20 @@ async function ensureAudio(): Promise<void> {
   return startingAudio;
 }
 
-const keyboard = createKeyboard(element('keyboard'), audio, ensureAudio, (name) => { element('active-note').textContent = name; }, onError);
+const keyboard = createNoteInput(audio, ensureAudio, onError);
+const keyboardViews = [1,2].map(index => createKeyboard(element(index === 1 ? 'keyboard' : 'keyboard2'), keyboard, index, () => {
+  const p=store.read().patch.parameters;
+  return { cents: p[`keyboard${index}.detune` as keyof typeof p], octave: p[`keyboard${index}.octave` as keyof typeof p] };
+}, name => { element(index === 1 ? 'active-note' : 'active-note2').textContent=name; }));
 connectMidi(element<HTMLButtonElement>('enable-midi'), element<HTMLSelectElement>('midi-input'), element('midi-status'), keyboard, ensureAudio);
 const updateOperators = operatorControls(element('operator-grid'), store, onError);
 const gain = makeControl(definitions.find((p) => p.id === 'gain')!, store, onError);
 const feedback = makeControl(definitions.find((p) => p.id === 'feedback')!, store, onError);
 element('gain-control').append(gain.element);
 element('feedback-control').append(feedback.element);
-const extraControls = definitions.filter(p => p.id.startsWith('pitch.') || p.id.startsWith('filter.')).map(definition => {
+const extraControls = definitions.filter(p => p.id.startsWith('pitch.') || p.id.startsWith('filter.') || p.id.startsWith('lfo.') || p.id.startsWith('reverb.') || p.id.startsWith('keyboard')).map(definition => {
   const control = makeControl(definition, store, onError);
-  const target = definition.id.startsWith('filter.') ? 'filter-controls' : definition.id === 'pitch.amount' ? 'pitch-depth' : 'pitch-controls';
+  const target = definition.id.startsWith('keyboard') ? `${definition.id.split('.')[0]}-controls` : definition.id.startsWith('lfo.') ? 'lfo-controls' : definition.id.startsWith('reverb.') ? 'reverb-controls' : definition.id.startsWith('filter.') ? 'filter-controls' : definition.id === 'pitch.amount' ? 'pitch-depth' : 'pitch-controls';
   element(target).append(control.element);
   return control;
 });
@@ -110,6 +117,7 @@ let lastSync = Promise.resolve();
 
 function update(patch: Patch, revision: number): void {
   updateOperators(patch); gain.update(patch); feedback.update(patch);
+  keyboardViews.forEach(view => view.updateTuning());
   extraControls.forEach(control => control.update(patch));
   element<HTMLInputElement>('patch-name').value = patch.name;
   element('revision').textContent = `REV ${String(revision).padStart(2, '0')}`;

@@ -1,5 +1,6 @@
 #pragma once
 #include <agent_synth/envelope.hpp>
+#include <agent_synth/effects.hpp>
 #include <agent_synth/parameters.generated.hpp>
 #include <array>
 #include <cstddef>
@@ -13,10 +14,11 @@ inline constexpr int voice_count = 16;
 inline constexpr int oversampling = 4;
 inline constexpr int global_parameter_count = 3;
 inline constexpr int operator_parameter_count = 7;
-enum OperatorParameter { ratio, detune, level, attack, decay, sustain, release, waveform, delay, hold };
+enum OperatorParameter { ratio, detune, level, attack, decay, sustain, release, waveform, delay, hold, op_pitch_enabled, op_pitch_amount, op_pitch_delay, op_pitch_attack, op_pitch_hold, op_pitch_decay, op_pitch_sustain, op_pitch_release, op_filter_type, op_filter_cutoff, op_filter_resonance };
 constexpr int operator_index(int op, OperatorParameter parameter) noexcept {
     return parameter <= release ? global_parameter_count + op * operator_parameter_count + parameter
-        : extension_operator_offset + op * extension_operator_parameter_count + (parameter - waveform);
+        : parameter <= hold ? extension_operator_offset + op * extension_operator_parameter_count + (parameter - waveform)
+        : expressive_operator_offset + op * expressive_operator_parameter_count + (parameter - op_pitch_enabled);
 }
 
 struct Patch {
@@ -37,6 +39,9 @@ public:
     [[nodiscard]] const Patch& patch() const noexcept { return patch_; }
     [[nodiscard]] bool note_on(int note, float velocity) noexcept;
     void note_off(int note) noexcept;
+    [[nodiscard]] bool note_on_id(int id, int note, float velocity, float cents = 0) noexcept;
+    void note_off_id(int id) noexcept;
+    [[nodiscard]] bool expression(int id, float cents, float pressure, float timbre) noexcept;
     void panic() noexcept;
     void render(std::span<float> output) noexcept;
     [[nodiscard]] int active_voices() const noexcept;
@@ -49,12 +54,20 @@ private:
         double phase = 0.0;
         float previous = 0.0f;
         Envelope envelope;
+        Envelope pitch_envelope;
+        float pitch_amount = 0;
+        double pitch_multiplier = 1;
+        FilterState filter;
         int waveform = 0;
         std::uint32_t noise = 1;
     };
     struct Voice {
         std::array<OperatorState, operator_count> operators{};
         int note = -1;
+        int id = -1;
+        float cents = 0, target_cents = 0;
+        float pressure = 1, target_pressure = 1;
+        float timbre = .5f, target_timbre = .5f;
         int algorithm = 0;
         float velocity = 0.0f;
         double frequency = 0.0;
@@ -71,6 +84,12 @@ private:
         std::array<double, operator_count> multipliers{};
         std::array<float, operator_count> levels{};
         std::array<float, operator_count> sustains{};
+        std::array<float, operator_count> cutoffs{};
+        std::array<float, operator_count> resonances{};
+        std::array<std::array<float,4>, operator_count> filter_mixes{};
+        std::array<float,4> lfo_amounts{};
+        float reverb_mix = 0, reverb_decay = 1.8f, reverb_damping = .45f;
+        float lfo_rate = 2;
         float gain = 0.0f;
         float feedback = 0.0f;
         float cutoff = 12000;
@@ -80,7 +99,7 @@ private:
 
     [[nodiscard]] float sine(double cycles) const noexcept;
     [[nodiscard]] float oscillator(OperatorState& op, double cycles, double increment) const noexcept;
-    [[nodiscard]] float filter_sample(float input) noexcept;
+    void modulation() noexcept;
     [[nodiscard]] float render_voice(Voice& voice) noexcept;
     [[nodiscard]] bool active(const Voice& voice) const noexcept;
     void update_targets() noexcept;
@@ -99,8 +118,17 @@ private:
     std::array<float, filter_size> filter_{};
     std::array<float, filter_size> history_{};
     int history_position_ = 0;
-    double filter_ic1_ = 0, filter_ic2_ = 0;
-    double filter_g_ = 0, filter_k_ = 0, filter_a1_ = 0;
+    FilterState output_filter_;
+    FilterCoefficients output_coefficients_;
+    std::array<FilterCoefficients, operator_count> operator_coefficients_{};
+    Reverb reverb_;
+    bool reverb_muted_ = false;
+    double lfo_phase_ = 0;
+    std::uint32_t lfo_random_ = 0x12345678;
+    float lfo_hold_ = 0;
+    std::array<float, 22> modulation_{};
+    std::array<double, operator_count> lfo_pitch_{};
+    float modulated_gain_ = 0;
 };
 
 } // namespace agent_synth

@@ -244,3 +244,26 @@ footer { display: flex; align-items: baseline; justify-content: space-between; g
   .sidebar .output-panel { grid-column: 1 / -1; }
   .midi-bar { gap: 6px; }
 }
+
+/* Expressive controls stay compact until their operator effect is enabled. */
+.operator-extra { margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--line, #d8d2c6); }
+.operator-extra details { margin-top: 8px; }
+.extra-control-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
+.operator-explanation { font-size: 11px; line-height: 1.6; color: var(--muted, #68665f); margin: 14px 0 8px; }
+.annotation-label { display: block; font-size: 9px; letter-spacing: .1em; }
+.annotation-label textarea { display: block; width: 100%; margin-top: 6px; resize: vertical; min-height: 48px; padding: 8px; border: 1px solid var(--line, #d8d2c6); background: #faf8f2; color: inherit; border-radius: 5px; font-family: inherit; font-size: 12px; line-height: 1.5; letter-spacing: normal; }
+.lfo-panel, .reverb-panel { padding: 20px; border-bottom: 1px solid var(--line, #d8d2c6); }
+.lfo-panel .parameter, .reverb-panel .parameter { margin-top: 12px; }
+.lfo-panel select { max-width: 100%; font-size: 11px; }
+.keyboard-tuning { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; max-width: 560px; margin: 14px 0; }
+.keyboard-panel .keyboard-heading:not(:first-child) { margin-top: 22px; }
+.mpe-options { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 12px; }
+.mpe-options label { display: grid; gap: 5px; font-size: 11px; }
+.mpe-options select, .mpe-options input { border: 1px solid var(--line, #d8d2c6); border-radius: 5px; background: #faf8f2; color: inherit; padding: 7px; font: inherit; }
+.mpe-options input { width: 100px; }
+@media (max-width: 600px) { .extra-control-grid { grid-template-columns: 1fr; } .keyboard-tuning { gap: 12px; } }
+
+.keyboard-panel .mpe-options label, .keyboard-panel .parameter-label label, .keyboard-panel .parameter-label output, .keyboard-panel #midi-status, .keyboard-panel .micro-copy { color: #cbd5c3; }
+.keyboard-panel .quiet-button { color: #dde6d4; }
+.keyboard-panel .mpe-options input, .keyboard-panel .mpe-options select { color: #23352e; }
+.operator-extra summary { cursor: pointer; font-size: 11px; line-height: 1.5; }

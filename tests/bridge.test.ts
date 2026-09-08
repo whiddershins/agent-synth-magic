@@ -91,7 +91,7 @@ test('stale and invalid agent edits preserve the patch and revision', () => {
 });
 
 test('malformed patches and oversized auditions are rejected', () => {
-  for (const patch of [null, [], {}, { ...initialPatch(), schemaVersion: 3 }, { ...initialPatch(), name: '' }, { ...initialPatch(), parameters: {} }]) assert.throws(() => validatePatch(patch));
+  for (const patch of [null, [], {}, { ...initialPatch(), schemaVersion: 4 }, { ...initialPatch(), name: '' }, { ...initialPatch(), parameters: {} }]) assert.throws(() => validatePatch(patch));
   for (const score of [{ duration: 13, events: [] }, { duration: 1, events: [{ time: 0, type: 'on', note: 60 }] }, { duration: 1, events: [{ time: 2, type: 'off', note: 60 }] }]) {
     assert.throws(() => renderAudition(module, initialPatch(), score as never));
   }
@@ -125,7 +125,7 @@ test('version 1 patches migrate with the original parameter order and neutral ad
   const legacy = { schemaVersion: 1, name: 'Legacy flute', parameters: Object.fromEntries(definitions.filter(p => !p.sinceVersion).map(p => [p.id, p.default])) };
   legacy.parameters['op2.level'] = .17;
   const migrated = validatePatch(legacy);
-  assert.equal(migrated.schemaVersion, 2);
+  assert.equal(migrated.schemaVersion, 3);
   assert.equal(definitions.filter(p => !p.sinceVersion).length, 45);
   const originalOrder = ['algorithm', 'gain', 'feedback', ...Array.from({ length: 6 }, (_, i) => ['ratio','detune','level','attack','decay','sustain','release'].map(field => `op${i + 1}.${field}`)).flat()];
   assert.deepEqual(definitions.slice(0,45).map(p => p.id), originalOrder);
@@ -139,4 +139,40 @@ test('version 1 patches migrate with the original parameter order and neutral ad
   const invalid = structuredClone(migrated);
   delete (invalid.parameters as Partial<typeof invalid.parameters>)['op1.waveform'];
   assert.throws(() => validatePatch(invalid), /exactly/);
+});
+
+test('schema 2 migrates all 73 values and saved annotations are validated atomically', () => {
+  const older = { schemaVersion: 2, name: 'Old warm saw', parameters: Object.fromEntries(definitions.filter(p => (p.sinceVersion ?? 1)<=2).map(p => [p.id,p.default])) };
+  older.parameters['op1.waveform']=2; older.parameters['pitch.amount']=7;
+  const migrated=validatePatch(older);
+  assert.equal(Object.keys(older.parameters).length,73);
+  assert.equal(migrated.parameters['op1.waveform'],2);
+  assert.equal(migrated.parameters['pitch.amount'],7);
+  for (let op=1;op<=6;op++) {
+    assert.equal(migrated.parameters[`op${op}.pitch.enabled` as keyof typeof migrated.parameters],0);
+    assert.equal(migrated.parameters[`op${op}.filter.type` as keyof typeof migrated.parameters],0);
+  }
+  assert.equal(migrated.parameters['reverb.mix'],0);
+  const store=new PatchStore(migrated), before=store.read();
+  assert.throws(() => store.replace({...migrated,annotations:{op1:'x'.repeat(1001)}}));
+  assert.deepEqual(store.read(),before);
+  migrated.annotations.op1='<script>text, not markup</script>';
+  store.replace(migrated,before.revision);
+  assert.deepEqual(validatePatch(JSON.parse(JSON.stringify(store.read().patch))),migrated);
+  assert.throws(() => validatePatch({...older,schemaVersion:'2'}));
+});
+
+test('offline expressive events bend independent notes and render repeatably with effects', () => {
+  const patch=presets.find(p => p.name==='Living glass')!;
+  const score={duration:.6,events:[
+    {time:0,type:'on' as const,id:1000,note:60,velocity:.8,cents:9},
+    {time:0,type:'on' as const,id:1001,note:60,velocity:.8,cents:-9},
+    {time:.1,type:'expression' as const,id:1000,note:60,cents:1200,pressure:.6,timbre:.8},
+    {time:.2,type:'off' as const,id:1000,note:60},
+    {time:.4,type:'off' as const,id:1001,note:60},
+  ]};
+  const a=renderAudition(module,patch,score), b=renderAudition(module,patch,score);
+  assert.deepEqual(a.samples,b.samples);
+  assert.ok(a.measurements.peak>.001);
+  assert.throws(() => renderAudition(module,patch,{duration:1,events:[{time:0,type:'expression',note:60,cents:NaN}]}));
 });

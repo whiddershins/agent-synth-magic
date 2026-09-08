@@ -1,47 +1,32 @@
-import type { KeyboardInput } from './keyboard';
+import type { NoteInput } from './note-input';
+import { createMidiRouter } from './midi-router';
+import type { MidiOptions } from './midi-router';
 
-export function connectMidi(button: HTMLButtonElement, select: HTMLSelectElement, status: HTMLElement, notes: KeyboardInput, ensureAudio: () => Promise<void>): void {
+export function connectMidi(button: HTMLButtonElement, select: HTMLSelectElement, status: HTMLElement, notes: NoteInput, ensureAudio: () => Promise<void>): void {
   let access: MIDIAccess | undefined;
   const inputs = new Map<string, MIDIInput>();
-  const pedal = new Set<string>();
-  const deferred = new Set<string>();
-  const reset = () => { pedal.clear(); deferred.clear(); };
-  notes.onReset(reset);
-  const release = (prefix: string) => {
-    notes.releasePrefix(prefix);
-    for (const source of deferred) if (source.startsWith(prefix)) deferred.delete(source);
-    for (const channel of pedal) if (channel.startsWith(prefix)) pedal.delete(channel);
-  };
+  const mode = document.getElementById('midi-mode') as HTMLSelectElement;
+  const member = document.getElementById('midi-member-range') as HTMLInputElement;
+  const master = document.getElementById('midi-master-range') as HTMLInputElement;
+  const options = (): MidiOptions => ({ mode: mode.value as MidiOptions['mode'], memberRange: Number(member.value), masterRange: Number(master.value) });
+  const router = createMidiRouter(notes, options());
+  notes.onReset(router.reset);
+  for (const input of [mode,member,master]) input.addEventListener('change', () => {
+    if (!member.checkValidity() || !master.checkValidity()) { status.textContent='Bend ranges must be within the displayed limits.'; return; }
+    router.configure(options());
+    status.textContent=`${mode.selectedOptions[0]!.text} · pitch, pressure and timbre ready`;
+  });
   if (!navigator.requestMIDIAccess) {
     button.disabled = true;
     status.textContent = 'MIDI unavailable in this browser. Touch and computer keys are ready.';
     return;
   }
   const message = (id: string, data: Uint8Array | null) => {
-    if (!data || data.length < 3 || document.hidden || (select.value !== 'all' && select.value !== id)) return;
-    const command = data[0]! & 0xf0;
-    const channel = `midi:${encodeURIComponent(id)}:${data[0]! & 0x0f}:`;
-    const note = data[1]!;
-    const value = data[2]!;
-    if (note > 127 || value > 127) return;
-    const source = `${channel}${note}`;
-    if (command === 0x90 && value > 0) {
-      deferred.delete(source);
-      void notes.press(source, note, value / 127);
-    } else if (command === 0x80 || (command === 0x90 && value === 0)) {
-      if (pedal.has(channel)) deferred.add(source);
-      else notes.release(source);
-    } else if (command === 0xb0 && note === 64) {
-      if (value >= 64) pedal.add(channel);
-      else {
-        pedal.delete(channel);
-        for (const key of deferred) if (key.startsWith(channel)) { notes.release(key); deferred.delete(key); }
-      }
-    } else if (command === 0xb0 && (note === 120 || note === 123)) release(channel);
+    if (!document.hidden && (select.value === 'all' || select.value === id)) router.message(id,data);
   };
   const refresh = () => {
     const available = new Map([...access!.inputs.values()].filter(input => input.state === 'connected').map(input => [input.id, input]));
-    for (const [id, input] of inputs) if (!available.has(id)) { input.onmidimessage = null; release(`midi:${encodeURIComponent(id)}:`); inputs.delete(id); }
+    for (const [id, input] of inputs) if (!available.has(id)) { input.onmidimessage = null; router.release(id); inputs.delete(id); }
     for (const [id, input] of available) {
       if (!inputs.has(id)) { inputs.set(id, input); input.onmidimessage = event => message(id, event.data); }
     }
@@ -49,15 +34,15 @@ export function connectMidi(button: HTMLButtonElement, select: HTMLSelectElement
     select.replaceChildren(new Option('All MIDI inputs', 'all'));
     for (const [id, input] of inputs) select.add(new Option(input.name || 'MIDI keyboard', id));
     select.value = inputs.has(previous) ? previous : 'all';
-    status.textContent = inputs.size ? `${inputs.size} MIDI input${inputs.size === 1 ? '' : 's'} connected · velocity + sustain pedal` : 'MIDI enabled. Connect a keyboard to begin.';
+    status.textContent = inputs.size ? `${inputs.size} MIDI input${inputs.size === 1 ? '' : 's'} connected · velocity · sustain · MPE pitch / pressure / timbre` : 'MIDI enabled. Connect a keyboard to begin.';
     select.hidden = inputs.size === 0;
   };
-  select.addEventListener('change', () => { release('midi:'); });
+  select.addEventListener('change', () => { router.release(); });
   button.addEventListener('click', () => {
     if (access) {
       access.onstatechange = null;
       for (const input of inputs.values()) { input.onmidimessage = null; void input.close().catch(() => {}); }
-      inputs.clear(); release('midi:'); access = undefined;
+      inputs.clear(); router.release(); access = undefined;
       button.textContent = 'Enable MIDI'; select.hidden = true; status.textContent = 'MIDI disconnected.';
       return;
     }

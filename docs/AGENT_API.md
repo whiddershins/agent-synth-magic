@@ -27,18 +27,19 @@ await window.synth.replacePatch(before.patch, after.revision);
 
 ```ts
 {
-  schemaVersion: 2,
+  schemaVersion: 3,
   name: 'My patch',
+  annotations: { op1: '', op2: '', op3: '', op4: '', op5: '', op6: '' },
   parameters: {
     algorithm: 0,
     gain: 0.22,
     feedback: 0,
-    // All 73 controls are required. Use describe() to enumerate them.
+    // All 156 controls are required. Use describe() to enumerate them.
   }
 }
 ```
 
-Use `describe().parameters` to enumerate the complete 73-control schema. Its operator level units need particular care: a modulator's full level contributes 8 radians to downstream phase; a carrier's level affects audible amplitude. Ratio and detune are combined into an oscillator frequency multiplier.
+Use `describe().parameters` to enumerate the complete 156-control schema. Its operator level units need particular care: a modulator's full level contributes 8 radians to downstream phase; a carrier's level affects audible amplitude. Ratio and detune are combined into an oscillator frequency multiplier.
 
 ## Custom auditions
 
@@ -57,6 +58,8 @@ const audition = await window.synth.render({
 ```
 
 Times are seconds from the start of the render. Note-on velocity is a normalized number in [0, 1]. MIDI pitches are integers in [0, 127]. Events must occur before the clip ends. Scores are limited to 0.05–12 seconds, 256 events, and integer sample rates from 8,000 to 96,000 Hz. One audition can render at a time; a stalled worker is terminated after 30 seconds. Requests return PCM without playing it through speakers or changing the current patch.
+
+Events may carry an `id` (0–2,147,483,647) distinct from `note`, allowing two voices at the same pitch. Omitted IDs use the note number for compatibility. Note-on may include `cents` (±14,400), `pressure` (0–1) and `timbre` (0–1). An `expression` event applies those values to its ID without retriggering; provide `note` for score validation and include the complete expression state (defaults are 0 cents, pressure 1, timbre 0.5). Note-off releases only its ID. Keyboard tuning controls are host settings, so offline scores specify their intended cents and transposed notes explicitly.
 
 `window.synth.stop()` releases live notes and stops audition playback. Note that it does not cancel a worker that is currently rendering an offline clip.
 

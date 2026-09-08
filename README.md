@@ -44,7 +44,7 @@ packages/web/                 Vanilla web instrument and audio bridge
 packages/bridge/              Local agent API, pairing, permissions, sessions
 scripts/                      Toolchain, code generation, builds
 tests/                        Native/Wasm parity and browser integration
-docs/SPEC.md                  Version 0.3 scope and acceptance criteria
+docs/SPEC.md                  Version 0.4 scope and acceptance criteria
 docs/ARCHITECTURE.md           Audio, state, and integration boundaries
 docs/AGENT_API.md              Structured control and audition API
 .github/workflows/ci.yml       Reproducible builds and checks
@@ -55,10 +55,12 @@ docs/AGENT_API.md              Structured control and audition API
 - Six operators with sine, triangle, saw, square, or deterministic noise; ratio, detune, level, and delay/attack/hold/decay/sustain/release envelopes.
 - Four routing algorithms, operator 6 self-feedback, and sixteen voices.
 - 4x oversampling with a 127-tap Blackman-windowed sinc decimator.
-- A separate ±48-semitone pitch envelope and resonant low-pass, high-pass, or band-pass filter.
+- Global and optional per-operator ±48-semitone pitch envelopes and resonant low-pass, high-pass, or band-pass filters.
+- One LFO with four assignable routes, a dry-by-default reverb, and saved operator annotations.
 - Smoothed continuous controls; routing, wave shape, and pitch depth changes apply to new notes.
-- Drag glissando, independent touch contacts, and MIDI input with velocity and sustain pedal in supporting browsers.
-- Nine starting patches, a browser-local saved patch menu, JSON patch import/export, undo, and a fixed audition phrase.
+- Two keyboards with independent detune/octave controls, drag glissando, and independent touch contacts.
+- MIDI input with velocity, sustain, channel bend, and MPE pitch / pressure / timbre in supporting browsers.
+- Ten starting patches, a browser-local saved patch menu, JSON patch import/export, undo, and a fixed audition phrase.
 - WAV export and peak, RMS, and spectral-centroid measurements from the rendered audio.
 - `window.synth` exposes versioned control discovery, patch snapshots, revision-checked edits, and offline rendering.
 
@@ -93,7 +95,7 @@ bash scripts/build-native.sh
 In another CMake project:
 
 ```cmake
-find_package(AgentSynth 0.3 CONFIG REQUIRED)
+find_package(AgentSynth 0.4 CONFIG REQUIRED)
 target_link_libraries(my_instrument PRIVATE AgentSynth::dsp)
 ```
 
@@ -123,10 +125,18 @@ Edit `contracts/instrument.json`, then run `npm run generate`. Commit both gener
 
 ## Current limits
 
-Oversampling reduces aliasing, but extreme ratios, high notes, and deep feedback can still alias. This version has no effects, MIDI pitch-bend/CC mapping, or arbitrary modulation graph. Delay, attack, and hold durations latch at note-on; decay and release latch at segment entry. Noise ignores ratio and incoming phase modulation. Saw/square edge correction and oversampling reduce aliasing but cannot eliminate it under deep phase modulation. Auditions are bounded to 12 seconds and 256 note events; the default five-second phrase can truncate long releases. Choose a longer custom score when evaluating those patches.
+Oversampling reduces aliasing, but extreme ratios, high notes, and deep feedback can still alias. The LFO has four routes; arbitrary audio routing and freely editable envelope points remain future work. Reverb is a simple mono room. Delay, attack, and hold durations latch at note-on; decay and release latch at segment entry. Noise ignores ratio and incoming phase modulation. Saw/square edge correction and oversampling reduce aliasing but cannot eliminate it under deep phase modulation. Auditions are bounded to 12 seconds and 256 note events; the default five-second phrase can truncate long releases. Choose a longer custom score when evaluating those patches.
 
 Web MIDI requires browser support and permission; Safari/iPad Safari currently does not expose it. The on-screen keyboard uses independent Pointer Events for touch playing and glissando. Browser tests cover multiple emulated contacts; physical iPad and MIDI hardware have not been certified. The last working patch is retained for the current tab. **Save patch** stores a named entry in the patch menu using browser-local storage and persists between visits. Saving the same name updates that entry; renaming before saving creates a separate copy. **Export JSON** downloads a portable backup. Saved patches belong to this browser and site; clearing browser data removes them, and they do not sync between devices.
 
-Schema 2 imports complete schema-1 patches with neutral defaults; see [the migration](docs/PATCH_SCHEMA.md).
+Schema 3 imports complete schema-1 and schema-2 patches with neutral defaults; see [the migration](docs/PATCH_SCHEMA.md).
 
 The repository is private by default and no redistribution license is granted yet. Licensing can be chosen when the package is ready to share.
+
+## Expressive input
+
+Each keyboard plays the same patch through independently owned voices. Detune retunes its held notes; octave changes apply to new presses and update key labels. Computer keys play keyboard 1. A shared 16-voice limit applies across both keyboards and MIDI.
+
+Enable MIDI, then choose Classic MIDI or an MPE lower/upper zone. Match the controller’s bend range (default MPE ±48 semitones, master/classic ±2). Standard RPN 6 can configure one zone per input; RPN 0 sets bend range. Master bend adds to member bend; member and master pressure multiply amplitude. CC74 moves modulator levels from 0.5× to 1.5×, so a carrier-only patch has no timbre response until a modulator is enabled. MPE+ extensions and MIDI 2.0 are not implemented. See [Roger Linn’s MPE explanation](https://www.rogerlinndesign.com/support/support-linnstrument-what-is-mpe).
+
+For each operator, turn Pitch envelope on or choose a filter mode to reveal its editor. Collapse the editor to keep the effect active with less screen space. The live explanation follows the current routing; the editable patch note records your intention and is included in Save patch and Export JSON.

@@ -4,7 +4,7 @@ import type { Measurements } from './measure';
 import { validatePatch } from '../patch';
 import type { Patch } from '../patch';
 
-export interface NoteEvent { time: number; type: 'on' | 'off'; note: number; velocity?: number }
+export interface NoteEvent { time: number; type: 'on' | 'off' | 'expression'; note: number; velocity?: number; id?: number; cents?: number; pressure?: number; timbre?: number }
 export interface Score { duration: number; events: NoteEvent[] }
 export interface Audition { samples: Float32Array; sampleRate: number; measurements: Measurements; patch: Patch; score: Score }
 
@@ -24,7 +24,11 @@ export function validateScore(score: Score, sampleRate: number): Score {
   if (!score || !Number.isFinite(score.duration) || score.duration < .05 || score.duration > 12) throw new Error('Auditions must last 0.05–12 seconds.');
   if (!Array.isArray(score.events) || score.events.length > 256) throw new Error('Auditions support up to 256 note events.');
   for (const event of score.events) {
-    if (!event || !Number.isFinite(event.time) || event.time < 0 || event.time >= score.duration || !Number.isInteger(event.note) || event.note < 0 || event.note > 127 || !['on', 'off'].includes(event.type)) throw new Error('Invalid audition note event.');
+    if (!event || !Number.isFinite(event.time) || event.time < 0 || event.time >= score.duration || !Number.isInteger(event.note) || event.note < 0 || event.note > 127 || !['on', 'off', 'expression'].includes(event.type)) throw new Error('Invalid audition note event.');
+    if (event.id !== undefined && (!Number.isInteger(event.id) || event.id<0 || event.id>2147483647)) throw new Error('Note identities must be nonnegative 32-bit integers.');
+    for (const [value,min,max] of [[event.cents,-14400,14400],[event.pressure,0,1],[event.timbre,0,1]]) {
+      if (value !== undefined && (!Number.isFinite(value) || value<min! || value>max!)) throw new Error('Invalid note expression.');
+    }
     if (event.type === 'on' && (typeof event.velocity !== 'number' || !Number.isFinite(event.velocity) || event.velocity < 0 || event.velocity > 1)) throw new Error('Note-on events need a velocity between 0 and 1.');
   }
   // Stable order for events at the same time; a caller can explicitly retrigger.
@@ -48,8 +52,12 @@ export function renderAudition(module: WebAssembly.Module, patch: Patch, request
   };
   for (const event of score.events) {
     renderUntil(Math.min(samples.length, Math.round(event.time * sampleRate)));
-    if (event.type === 'on') synth.noteOn(event.note, event.velocity!);
-    else synth.noteOff(event.note);
+    const id = event.id ?? event.note;
+    if (event.type === 'on') {
+      synth.noteOnId(id, event.note, event.velocity!, event.cents ?? 0);
+      if (event.pressure !== undefined || event.timbre !== undefined) synth.expression(id,event.cents ?? 0,event.pressure ?? 1,event.timbre ?? .5);
+    } else if (event.type === 'expression') synth.expression(id,event.cents ?? 0,event.pressure ?? 1,event.timbre ?? .5);
+    else synth.noteOffId(id);
   }
   renderUntil(samples.length);
   return { samples, sampleRate, measurements: measure(samples, sampleRate), patch: checked, score };

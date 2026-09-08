@@ -32,7 +32,7 @@ test('an agent edits, auditions, revises and restores the visible instrument', a
   await page.goto('/?agent=1');
   const connection = await pair(page, request);
   const describe = (await (await connection.call('describe')).json()).result;
-  expect(describe.instrument.parameters).toHaveLength(73);
+  expect(describe.instrument.parameters).toHaveLength(156);
   const initial = (await (await connection.call('read_patch')).json()).result;
   const changed = await connection.call('apply_changes', { changes: { 'op1.ratio': 2, gain: .2 }, name: 'Agent candidate', expectedRevision: initial.revision }, 'candidate-edit-001');
   expect(changed.status()).toBe(200);

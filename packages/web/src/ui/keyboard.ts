@@ -1,51 +1,32 @@
-import type { AudioController } from '../audio/controller';
+import type { NoteInput } from './note-input';
 
 const computerKeys: Record<string, number> = { KeyA: 60, KeyW: 61, KeyS: 62, KeyE: 63, KeyD: 64, KeyF: 65, KeyT: 66, KeyG: 67, KeyY: 68, KeyH: 69, KeyU: 70, KeyJ: 71, KeyK: 72 };
 const names = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B'];
 export const noteName = (note: number): string => `${names[note % 12]}${Math.floor(note / 12) - 1}`;
 
-export function createKeyboard(container: HTMLElement, audio: AudioController, onStart: () => Promise<void>, onNote: (name: string) => void, onError: (message: string) => void) {
-  const held = new Map<string, number>();
-  const sounding = new Set<number>();
+export function createKeyboard(container: HTMLElement, notes: NoteInput, index: number, tuning: () => { cents: number; octave: number }, onNote: (name: string) => void) {
+  const prefix = `keyboard${index}:`;
   const buttons = new Map<number, HTMLButtonElement>();
-  const pending = new Map<string, object>();
   const pointers = new Set<number>();
-  const resetListeners = new Set<() => void>();
   const update = () => {
-    const notes = new Set(held.values());
-    for (const [note, button] of buttons) button.classList.toggle('pressed', notes.has(note));
-    onNote(notes.size ? [...notes].map(noteName).join(' · ') : '—');
+    const { octave } = tuning();
+    const active = new Set([...notes.notes(prefix), ...(index === 1 ? notes.notes('midi:').map(note => note-octave*12) : [])]);
+    for (const [note, button] of buttons) {
+      button.classList.toggle('pressed', active.has(note));
+      const name=noteName(note+octave*12);
+      button.setAttribute('aria-label', `Play ${name}`);
+      button.querySelector('.note-name')!.textContent=name;
+    }
+    const pitches = new Set([...notes.notes(prefix,true), ...(index === 1 ? notes.notes('midi:',true) : [])]);
+    onNote(pitches.size ? [...pitches].map(noteName).join(' · ') : '—');
   };
-  const press = async (source: string, note: number, velocity = .75) => {
-    if (held.get(source) === note) return;
-    release(source);
-    const token = {};
-    pending.set(source, token);
-    held.set(source, note);
-    update();
-    try {
-      await onStart();
-      if (pending.get(source) === token && held.get(source) === note && !sounding.has(note)) {
-        audio.stopPlayback();
-        audio.noteOn(note, velocity);
-        sounding.add(note);
-      }
-    } catch (error) { if (pending.get(source) === token) release(source); onError((error as Error).message); }
+  notes.subscribe(update); notes.onReset(() => pointers.clear());
+  const press = (source: string, note: number) => {
+    const { cents, octave } = tuning();
+    const actual = note+octave*12;
+    return notes.press(prefix+source, actual, .75, cents, `${prefix}note:${actual}`, note);
   };
-  const release = (source: string) => {
-    const note = held.get(source);
-    if (note === undefined) return;
-    held.delete(source);
-    pending.delete(source);
-    if (![...held.values()].includes(note)) { audio.noteOff(note); sounding.delete(note); }
-    update();
-  };
-  const releaseAll = () => {
-    held.clear(); pending.clear(); pointers.clear(); sounding.clear(); audio.panic(); update();
-    for (const listener of resetListeners) listener();
-  };
-  const releasePrefix = (prefix: string) => { for (const source of [...held.keys()]) if (source.startsWith(prefix)) release(source); };
-
+  const release = (source: string) => notes.release(prefix+source);
   let whiteIndex = 0;
   const whiteCount = 15;
   for (let note = 48; note <= 72; note++) {
@@ -55,7 +36,7 @@ export function createKeyboard(container: HTMLElement, audio: AudioController, o
     button.className = `piano-key ${black ? 'black' : 'white'}`;
     button.setAttribute('aria-label', `Play ${noteName(note)}`);
     button.dataset.note = String(note);
-    const key = Object.entries(computerKeys).find(([, value]) => value === note)?.[0].replace('Key', '') ?? '';
+    const key = index === 1 ? Object.entries(computerKeys).find(([, value]) => value === note)?.[0].replace('Key', '') ?? '' : '';
     const label = document.createElement('span');
     label.className = 'note-name'; label.textContent = noteName(note);
     const shortcut = document.createElement('span');
@@ -90,15 +71,12 @@ export function createKeyboard(container: HTMLElement, audio: AudioController, o
     pointers.delete(id); release(`pointer:${id}`);
   });
   window.addEventListener('keydown', (event) => {
-    if (event.code === 'Escape') { releaseAll(); return; }
+    if (index !== 1) return;
     const target = event.target as HTMLElement;
     if (event.ctrlKey || event.metaKey || event.altKey || target.closest('input, textarea, select, [contenteditable=true]')) return;
     const note = computerKeys[event.code];
     if (note !== undefined && !event.repeat) { event.preventDefault(); void press(`key:${event.code}`, note); }
   });
   window.addEventListener('keyup', (event) => release(`key:${event.code}`));
-  window.addEventListener('blur', releaseAll);
-  document.addEventListener('visibilitychange', () => { if (document.hidden) releaseAll(); });
-  return { press, release, releasePrefix, releaseAll, onReset: (listener: () => void) => resetListeners.add(listener) };
+  return { updateTuning: () => { notes.expression(prefix, { cents: tuning().cents }); update(); } };
 }
-export type KeyboardInput = ReturnType<typeof createKeyboard>;

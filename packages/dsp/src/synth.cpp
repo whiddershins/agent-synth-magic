@@ -71,7 +71,10 @@ bool Synth::prepare(double sample_rate) noexcept {
     voices_ = {};
     history_ = {};
     history_position_ = 0;
-    filter_ic1_ = filter_ic2_ = 0;
+    output_filter_ = {};
+    reverb_.prepare(sample_rate);
+    reverb_muted_ = false;
+    lfo_phase_ = 0; lfo_random_ = 0x12345678; lfo_hold_ = 0;
     update_targets();
     current_ = target_;
     return true;
@@ -81,11 +84,16 @@ bool Synth::set_patch(const Patch& patch) noexcept {
     if (!patch.valid()) return false;
     patch_ = patch;
     update_targets();
-    if (active_voices() == 0) current_ = target_;
+    if (active_voices() == 0 && !reverb_.active()) current_ = target_;
     return true;
 }
 
 void Synth::update_targets() noexcept {
+    target_.lfo_rate = patch_.values[parameter_index("lfo.rate")];
+    target_.reverb_mix = patch_.values[parameter_index("reverb.mix")] / 100;
+    target_.reverb_decay = patch_.values[parameter_index("reverb.decay")];
+    target_.reverb_damping = patch_.values[parameter_index("reverb.damping")] / 100;
+    for (int r=0; r<4; ++r) target_.lfo_amounts[r] = patch_.values[parameter_index("lfo.route1.amount")+2*r] / 100;
     target_.gain = patch_.values[1];
     target_.feedback = patch_.values[2];
     target_.cutoff = patch_.values[filter_cutoff];
@@ -93,6 +101,10 @@ void Synth::update_targets() noexcept {
     target_.filter_mix.fill(0);
     target_.filter_mix[static_cast<int>(patch_.values[filter_type])] = 1;
     for (int i = 0; i < operator_count; ++i) {
+        target_.cutoffs[i] = patch_.op(i, op_filter_cutoff);
+        target_.resonances[i] = patch_.op(i, op_filter_resonance);
+        target_.filter_mixes[i].fill(0);
+        target_.filter_mixes[i][static_cast<int>(patch_.op(i, op_filter_type))] = 1;
         target_.multipliers[i] = patch_.op(i, ratio) * std::exp2(patch_.op(i, detune) / 1200.0);
         target_.levels[i] = patch_.op(i, level);
         target_.sustains[i] = patch_.op(i, sustain);
@@ -100,6 +112,11 @@ void Synth::update_targets() noexcept {
 }
 
 void Synth::smooth() noexcept {
+    current_.lfo_rate += smoothing_ * (target_.lfo_rate-current_.lfo_rate);
+    current_.reverb_mix += smoothing_ * (target_.reverb_mix-current_.reverb_mix);
+    current_.reverb_decay += smoothing_ * (target_.reverb_decay-current_.reverb_decay);
+    current_.reverb_damping += smoothing_ * (target_.reverb_damping-current_.reverb_damping);
+    for (int r=0; r<4; ++r) current_.lfo_amounts[r] += smoothing_*(target_.lfo_amounts[r]-current_.lfo_amounts[r]);
     current_.gain += smoothing_ * (target_.gain - current_.gain);
     current_.feedback += smoothing_ * (target_.feedback - current_.feedback);
     current_.cutoff += smoothing_ * (target_.cutoff - current_.cutoff);
@@ -109,6 +126,13 @@ void Synth::smooth() noexcept {
         if (std::abs(current_.filter_mix[i] - target_.filter_mix[i]) < 1e-6f) current_.filter_mix[i] = target_.filter_mix[i];
     }
     for (int i = 0; i < operator_count; ++i) {
+        current_.cutoffs[i] += smoothing_*(target_.cutoffs[i]-current_.cutoffs[i]);
+        current_.resonances[i] += smoothing_*(target_.resonances[i]-current_.resonances[i]);
+        for (int mode=0; mode<4; ++mode) {
+            auto& mix = current_.filter_mixes[i][mode];
+            mix += smoothing_*(target_.filter_mixes[i][mode]-mix);
+            if (std::abs(mix-target_.filter_mixes[i][mode]) < 1e-6f) mix=target_.filter_mixes[i][mode];
+        }
         current_.multipliers[i] += smoothing_ * (target_.multipliers[i] - current_.multipliers[i]);
         current_.levels[i] += smoothing_ * (target_.levels[i] - current_.levels[i]);
         current_.sustains[i] += smoothing_ * (target_.sustains[i] - current_.sustains[i]);
@@ -131,12 +155,15 @@ int Synth::active_voices() const noexcept {
     return count;
 }
 
-bool Synth::note_on(int note, float velocity) noexcept {
-    if (note < 0 || note > 127 || !std::isfinite(velocity) || velocity < 0 || velocity > 1) return false;
-    if (velocity == 0) { note_off(note); return true; }
+bool Synth::note_on(int note, float velocity) noexcept { return note_on_id(note, note, velocity); }
+
+bool Synth::note_on_id(int id, int note, float velocity, float cents) noexcept {
+    if (id < 0 || !std::isfinite(cents) || std::abs(cents)>14400 || note < 0 || note > 127 || !std::isfinite(velocity) || velocity < 0 || velocity > 1) return false;
+    if (velocity == 0) { note_off_id(id); return true; }
+    reverb_muted_ = false;
     Voice* selected = nullptr;
-    // A repeated pitch retriggers one voice. The host owns overlapping key sources.
-    for (auto& voice : voices_) if (voice.note == note && voice.held) { selected = &voice; break; }
+    // Note identity, rather than pitch, owns a voice. Legacy events use the note as ID.
+    for (auto& voice : voices_) if (voice.id == id && voice.held) { selected = &voice; break; }
     if (!selected) for (auto& voice : voices_) if (!active(voice)) { selected = &voice; break; }
     if (!selected) {
         selected = &voices_[0];
@@ -145,6 +172,8 @@ bool Synth::note_on(int note, float velocity) noexcept {
     const float tail = active(*selected) ? selected->previous : 0.0f;
     *selected = {};
     selected->note = note;
+    selected->id = id;
+    selected->cents = selected->target_cents = cents;
     selected->held = true;
     selected->algorithm = static_cast<int>(patch_.values[0]);
     selected->velocity = velocity;
@@ -156,6 +185,8 @@ bool Synth::note_on(int note, float velocity) noexcept {
     selected->pitch_envelope.start(patch_.values[pitch_attack], sample_rate_, patch_.values[pitch_delay], patch_.values[pitch_hold]);
     for (int i = 0; i < operator_count; ++i) {
         auto& op = selected->operators[i];
+        op.pitch_amount = patch_.op(i, op_pitch_enabled) ? patch_.op(i, op_pitch_amount) : 0;
+        op.pitch_envelope.start(patch_.op(i, op_pitch_attack), sample_rate_, patch_.op(i, op_pitch_delay), patch_.op(i, op_pitch_hold));
         op.envelope.start(patch_.op(i, attack), internal_rate_, patch_.op(i, delay), patch_.op(i, hold));
         op.waveform = static_cast<int>(patch_.op(i, waveform));
         op.noise = 0x9e3779b9u ^ (static_cast<std::uint32_t>(note + 1) * 0x85ebca6bu)
@@ -165,16 +196,31 @@ bool Synth::note_on(int note, float velocity) noexcept {
     return true;
 }
 
-void Synth::note_off(int note) noexcept {
+void Synth::note_off(int note) noexcept { note_off_id(note); }
+
+bool Synth::expression(int id, float cents, float pressure, float timbre) noexcept {
+    if (id < 0 || !std::isfinite(cents) || std::abs(cents)>14400 || !std::isfinite(pressure) || pressure<0 || pressure>1 || !std::isfinite(timbre) || timbre<0 || timbre>1) return false;
+    for (auto& voice : voices_) if (voice.id == id && active(voice)) {
+        voice.target_cents = cents; voice.target_pressure = pressure; voice.target_timbre = timbre;
+    }
+    return true;
+}
+
+void Synth::note_off_id(int id) noexcept {
     for (auto& voice : voices_) {
-        if (voice.note != note || !voice.held) continue;
+        if (voice.id != id || !voice.held) continue;
         voice.held = false;
         voice.pitch_envelope.release(patch_.values[pitch_release], sample_rate_);
-        for (int i = 0; i < operator_count; ++i) voice.operators[i].envelope.release(patch_.op(i, release), internal_rate_);
+        for (int i = 0; i < operator_count; ++i) {
+            voice.operators[i].envelope.release(patch_.op(i, release), internal_rate_);
+            voice.operators[i].pitch_envelope.release(patch_.op(i, op_pitch_release), sample_rate_);
+        }
     }
 }
 
 void Synth::panic() noexcept {
+    reverb_.clear();
+    reverb_muted_ = true;
     for (auto& voice : voices_) {
         voice.held = false;
         voice.pitch_envelope.release(0.008f, sample_rate_, true);
@@ -204,19 +250,33 @@ float Synth::oscillator(OperatorState& op, double cycles, double increment) cons
     return static_cast<float>((phase < 0.5 ? 1 : -1) + poly_blep(phase, step) - poly_blep(shifted, step));
 }
 
-float Synth::filter_sample(float input) noexcept {
-    if (current_.filter_mix[0] == 1) { filter_ic1_ = filter_ic2_ = 0; return input; }
-    // Topology-preserving state-variable filter, evaluated at the internal rate.
-    const double v3 = input - filter_ic2_;
-    const double band = filter_a1_ * (filter_ic1_ + filter_g_ * v3);
-    const double low = filter_ic2_ + filter_g_ * band;
-    filter_ic1_ = 2 * band - filter_ic1_;
-    filter_ic2_ = 2 * low - filter_ic2_;
-    if (std::abs(filter_ic1_) < 1e-20) filter_ic1_ = 0;
-    if (std::abs(filter_ic2_) < 1e-20) filter_ic2_ = 0;
-    const double high = input - filter_k_ * band - low;
-    return static_cast<float>(current_.filter_mix[0] * input + current_.filter_mix[1] * low
-        + current_.filter_mix[2] * high + current_.filter_mix[3] * band);
+void Synth::modulation() noexcept {
+    const int shape = static_cast<int>(patch_.values[parameter_index("lfo.waveform")]);
+    float wave = sine(lfo_phase_);
+    if (shape==1) wave=static_cast<float>(1-4*std::abs(lfo_phase_-.5));
+    if (shape==2) wave=static_cast<float>(2*lfo_phase_-1);
+    if (shape==3) wave=lfo_phase_<.5 ? 1 : -1;
+    if (shape==4) wave=lfo_hold_;
+    lfo_phase_ += current_.lfo_rate/sample_rate_;
+    if (lfo_phase_ >= 1) {
+        lfo_phase_ -= 1;
+        lfo_random_ ^= lfo_random_<<13; lfo_random_ ^= lfo_random_>>17; lfo_random_ ^= lfo_random_<<5;
+        lfo_hold_ = static_cast<float>(lfo_random_>>8)/8388608.0f-1;
+    }
+    modulation_.fill(0);
+    for (int r=0; r<4; ++r) {
+        const int destination = static_cast<int>(patch_.values[parameter_index("lfo.route1.target")+2*r]);
+        modulation_[destination] += wave*current_.lfo_amounts[r];
+    }
+    for (auto& amount : modulation_) amount=std::clamp(amount,-1.0f,1.0f);
+    modulated_gain_ = current_.gain*std::max(0.0f,1+modulation_[2]);
+    output_coefficients_.mix = current_.filter_mix;
+    if (current_.filter_mix[0]!=1) output_coefficients_.configure(current_.cutoff*std::exp2(modulation_[3]*4), current_.resonance, internal_rate_);
+    for (int i=0; i<operator_count; ++i) {
+        lfo_pitch_[i]=std::exp2(modulation_[1]+modulation_[4+3*i]);
+        auto& c=operator_coefficients_[i]; c.mix=current_.filter_mixes[i];
+        if (c.mix[0]!=1) c.configure(current_.cutoffs[i]*std::exp2(modulation_[6+3*i]*4),current_.resonances[i],internal_rate_);
+    }
 }
 
 float Synth::render_voice(Voice& voice) noexcept {
@@ -230,14 +290,17 @@ float Synth::render_voice(Voice& voice) noexcept {
             if (routing.inputs[i] & (1u << j)) modulation += modulation_radians * outputs[j];
         }
         const float envelope = op.envelope.next(patch_.op(i, decay), current_.sustains[i], internal_rate_);
-        const double increment = voice.frequency * voice.pitch_multiplier * current_.multipliers[i] / internal_rate_;
-        outputs[i] = oscillator(op, op.phase + modulation / tau, increment) * envelope * current_.levels[i];
+        const double increment = voice.frequency * voice.pitch_multiplier * op.pitch_multiplier * lfo_pitch_[i] * current_.multipliers[i] / internal_rate_;
+        const bool carrier = routing.carriers & (1u << i);
+        const float expression_level = carrier ? 1 : .5f + voice.timbre;
+        outputs[i] = op.filter.next(oscillator(op, op.phase + modulation / tau, increment), operator_coefficients_[i])
+            * envelope * current_.levels[i] * std::max(0.0f, 1+modulation_[5+3*i]) * expression_level;
         op.previous = outputs[i];
         op.phase += increment;
         op.phase -= std::floor(op.phase);
         if (routing.carriers & (1u << i)) mixed += outputs[i];
     }
-    mixed *= voice.velocity / routing.carrier_count;
+    mixed *= voice.velocity * voice.pressure / routing.carrier_count;
     if (voice.tail_remaining > 0) {
         mixed += voice.tail * static_cast<float>(voice.tail_remaining) / fade_samples_;
         --voice.tail_remaining;
@@ -249,19 +312,23 @@ float Synth::render_voice(Voice& voice) noexcept {
 void Synth::render(std::span<float> output) noexcept {
     for (auto& sample : output) {
         smooth();
-        if (current_.filter_mix[0] != 1) {
-            filter_g_ = std::tan(pi * std::min(static_cast<double>(current_.cutoff), sample_rate_ * 0.45) / internal_rate_);
-            filter_k_ = 1.0 / current_.resonance;
-            filter_a1_ = 1.0 / (1.0 + filter_g_ * (filter_g_ + filter_k_));
-        }
-        for (auto& voice : voices_) if (active(voice) && voice.pitch_amount != 0) {
-            const float envelope = voice.pitch_envelope.next(patch_.values[pitch_decay], patch_.values[pitch_sustain], sample_rate_);
-            voice.pitch_multiplier = std::exp2(voice.pitch_amount * envelope / 12.0);
+        modulation();
+        for (auto& voice : voices_) if (active(voice)) {
+            voice.cents += smoothing_*(voice.target_cents-voice.cents);
+            voice.pressure += smoothing_*(voice.target_pressure-voice.pressure);
+            voice.timbre += smoothing_*(voice.target_timbre-voice.timbre);
+            float pitch = voice.cents/100;
+            if (voice.pitch_amount != 0) pitch += voice.pitch_amount*voice.pitch_envelope.next(patch_.values[pitch_decay],patch_.values[pitch_sustain],sample_rate_);
+            voice.pitch_multiplier = std::exp2(pitch/12.0);
+            for (int i=0; i<operator_count; ++i) {
+                auto& op = voice.operators[i];
+                if (op.pitch_amount != 0) op.pitch_multiplier = std::exp2(op.pitch_amount*op.pitch_envelope.next(patch_.op(i,op_pitch_decay),patch_.op(i,op_pitch_sustain),sample_rate_)/12.0);
+            }
         }
         for (int sub = 0; sub < oversampling; ++sub) {
             float mixed = 0;
             for (auto& voice : voices_) if (active(voice)) mixed += render_voice(voice);
-            const float driven = filter_sample(mixed) * current_.gain;
+            const float driven = output_filter_.next(mixed, output_coefficients_) * modulated_gain_;
             // Smooth bounded saturator runs BEFORE downsampling.
             const float shaped = driven / std::sqrt(1.0f + driven * driven);
             history_[history_position_] = shaped;
@@ -273,7 +340,7 @@ void Synth::render(std::span<float> output) noexcept {
             read = read == 0 ? filter_size - 1 : read - 1;
             filtered += filter_[tap] * history_[read];
         }
-        sample = std::clamp(filtered, -1.0f, 1.0f);
+        sample = std::clamp(reverb_.next(filtered, reverb_muted_ ? 0 : current_.reverb_mix, current_.reverb_decay, current_.reverb_damping), -1.0f, 1.0f);
     }
 }
 

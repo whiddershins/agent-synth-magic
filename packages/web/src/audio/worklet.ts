@@ -9,6 +9,9 @@ type Command =
   | { type: 'patch'; patch: Patch; id: number }
   | { type: 'on'; note: number; velocity: number }
   | { type: 'off'; note: number }
+  | { type: 'onId'; id: number; note: number; velocity: number; cents: number }
+  | { type: 'offId'; id: number }
+  | { type: 'expression'; id: number; cents: number; pressure: number; timbre: number }
   | { type: 'panic' };
 
 class FmProcessor extends AudioWorkletProcessor {
@@ -24,6 +27,9 @@ class FmProcessor extends AudioWorkletProcessor {
           case 'patch': this.synth.setPatch(data.patch); this.port.postMessage({ type: 'applied', id: data.id }); break;
           case 'on': this.synth.noteOn(data.note, data.velocity); break;
           case 'off': this.synth.noteOff(data.note); break;
+          case 'onId': this.synth.noteOnId(data.id, data.note, data.velocity, data.cents); break;
+          case 'offId': this.synth.noteOffId(data.id); break;
+          case 'expression': this.synth.expression(data.id, data.cents, data.pressure, data.timbre); break;
           case 'panic': this.synth.panic(); break;
         }
       } catch (error) {

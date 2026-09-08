@@ -19,8 +19,9 @@ export interface ParameterDefinition {
 export const definitions: readonly ParameterDefinition[] = parameters;
 export const definitionById = new Map(definitions.map((definition) => [definition.id, definition]));
 export interface Patch {
-  schemaVersion: 2;
+  schemaVersion: 3;
   name: string;
+  annotations: Record<string, string>;
   parameters: Record<ParameterId, number>;
 }
 export interface Snapshot { revision: number; patch: Patch }
@@ -30,7 +31,7 @@ function record(value: unknown): value is Record<string, unknown> {
 }
 
 export function validatePatch(value: unknown): Patch {
-  if (!record(value) || (value.schemaVersion !== 1 && value.schemaVersion !== instrument.schemaVersion)) throw new Error('Expected a version 1 or 2 FM / 6 patch.');
+  if (!record(value) || (typeof value.schemaVersion !== 'number' || ![1, 2, instrument.schemaVersion].includes(value.schemaVersion))) throw new Error('Expected a version 1, 2 or 3 FM / 6 patch.');
   if (typeof value.name !== 'string' || !value.name.trim() || value.name.length > 80) throw new Error('Patch names must contain 1–80 characters.');
   if (!record(value.parameters)) throw new Error('Patch parameters are missing.');
   const required = definitions.filter(p => (p.sinceVersion ?? 1) <= Number(value.schemaVersion));
@@ -44,11 +45,19 @@ export function validatePatch(value: unknown): Patch {
     }
     values[definition.id] = number;
   }
-  return { schemaVersion: 2, name: value.name.trim(), parameters: values };
+  const annotations: Record<string, string> = {};
+  const supplied = value.annotations ?? {};
+  if (!record(supplied) || Object.keys(supplied).some(key => !/^op[1-6]$/.test(key))) throw new Error('Annotations must be notes for op1–op6.');
+  for (let op = 1; op <= 6; op++) {
+    const text = supplied[`op${op}`] ?? '';
+    if (typeof text !== 'string' || text.length > 1000) throw new Error('Each operator note must be text of at most 1,000 characters.');
+    annotations[`op${op}`] = text;
+  }
+  return { schemaVersion: 3, name: value.name.trim(), annotations, parameters: values };
 }
 
 export function initialPatch(): Patch {
-  return { schemaVersion: 2, name: 'Pure sine', parameters: Object.fromEntries(definitions.map((p) => [p.id, p.default])) as Patch['parameters'] };
+  return { schemaVersion: 3, name: 'Pure sine', annotations: Object.fromEntries(Array.from({ length: 6 }, (_, i) => [`op${i+1}`, ''])), parameters: Object.fromEntries(definitions.map((p) => [p.id, p.default])) as Patch['parameters'] };
 }
 
 export function patchValues(patch: Patch): Float32Array {

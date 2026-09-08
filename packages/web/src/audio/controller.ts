@@ -104,6 +104,9 @@ export class AudioController {
 
   noteOn(note: number, velocity = .8): void { this.#node?.port.postMessage({ type: 'on', note, velocity }); }
   noteOff(note: number): void { this.#node?.port.postMessage({ type: 'off', note }); }
+  noteOnId(id: number, note: number, velocity: number, cents: number): void { this.#node?.port.postMessage({ type: 'onId', id, note, velocity, cents }); }
+  noteOffId(id: number): void { this.#node?.port.postMessage({ type: 'offId', id }); }
+  expression(id: number, cents: number, pressure: number, timbre: number): void { this.#node?.port.postMessage({ type: 'expression', id, cents, pressure, timbre }); }
   panic(): void { this.#node?.port.postMessage({ type: 'panic' }); this.stopPlayback(); }
   stopPlayback(): void { this.#playback?.stop(); this.#playback = undefined; }
 

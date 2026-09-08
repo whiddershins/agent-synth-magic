@@ -1,4 +1,4 @@
-# Agent Synth 0.3
+# Agent Synth 0.4
 
 ## Product
 
@@ -47,8 +47,17 @@ The UI and agent facade share one patch store. Invalid or stale edits must leave
 
 ## Follow-on work
 
-Connect an audio-capable model to the existing control/audition facade, measure closed-loop improvement against a no-audio baseline, then add native JUCE standalone/AU wrappers. This first version does not include model calls, API credentials, DX7 emulation, arbitrary routing, effects, or native plugin packaging.
+Connect an audio-capable model to the existing control/audition facade, measure closed-loop improvement against a no-audio baseline, then add native JUCE standalone/AU wrappers. This first version does not include model calls, API credentials, DX7 emulation, arbitrary routing or native plugin packaging.
 
 ## Release additions accepted September 8, 2026
 
 Delay + hold + ADSR is the chosen multistage envelope design for this release. Freely editable envelope points remain future work. Publish the playable synth first and return to the agent feedback loop later. Schema-1 patches must migrate without changing any original values, serialized positions, or neutral-default sound.
+
+
+## Expressive release 0.4
+
+Schema/ABI 3 preserves all 73 existing parameter indices and meanings, then appends independent operator pitch DAHDSR enable/depth/timing and bypassable operator filters, one free-running LFO with four assignable bipolar routes, and a dry-by-default mono algorithmic reverb. Each operator shows a routing-aware explanation and a saved editable annotation (up to 1,000 characters).
+
+Two multitouch keyboards share one engine, with separate detune and octave controls saved in the patch. Held notes retune smoothly when detune changes; octave changes affect the next key press. Source identities keep equal pitches independent. MPE MIDI input adds independent member-channel pitch bend, pressure-to-amplitude and CC74-to-modulator-level expression; lower/upper zone and bend ranges are selectable, with standard RPN configuration supported. Classic MIDI remains available. This is MIDI 1.0 MPE, not Haken MPE+ or MIDI 2.0. Hardware validation remains a manual check.
+
+LFO routes cover global pitch, output level/filter cutoff, and individual operator pitch/level/filter cutoff. Reverb uses fixed prepared delay storage and runs in the shared C++ engine for live/offline parity. Bypass clears its tail. All original patch values migrate unchanged; new effects are neutral by default.
