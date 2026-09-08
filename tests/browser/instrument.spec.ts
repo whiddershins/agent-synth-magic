@@ -176,6 +176,20 @@ test('MIDI handles velocity-zero, sustain, shared keys and device disconnect', a
   await expect(page.locator('#active-note')).toHaveText('C4');
   await page.keyboard.up('a');
   await expect(page.locator('#active-note')).toHaveText('—');
+  await send([0x90,65,100]); await send([0xb0,64,127]);
+  await page.evaluate(() => {
+    Object.defineProperty(document,'hidden',{value:true,configurable:true});
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  await expect(page.locator('#active-note')).toHaveText('F4');
+  await send([0x80,65,0]);
+  await expect(page.locator('#active-note')).toHaveText('F4');
+  await send([0xb0,64,0]);
+  await expect(page.locator('#active-note')).toHaveText('—');
+  await page.evaluate(() => {
+    Object.defineProperty(document,'hidden',{value:false,configurable:true});
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
   await send([0x90,64,100]);
   await page.evaluate(() => (window as unknown as { unplugMidi(): void }).unplugMidi());
   await expect(page.locator('#active-note')).toHaveText('—');
@@ -364,4 +378,28 @@ test('each keyboard sustain latch holds released notes and Stop all clears both'
   await expect(page.locator('#active-note')).toHaveText('—');
   await expect(page.locator('#active-note2')).toHaveText('—');
   await expect(page.locator('#output-level')).toHaveText('−∞ dB');
+});
+
+test('leaving the synth preserves latched notes and technical explanations retain a separate practical tip', async ({page,context}) => {
+  await page.goto('/');
+  await page.selectOption('#preset','5');
+  await page.getByRole('button',{name:'Enable audio'}).click();
+  const latch=page.getByRole('button',{name:'Keyboard 1 sustain latch',exact:true});
+  await latch.click(); await page.keyboard.press('a');
+  const card=page.locator('.operator-card').first();
+  await expect(card.locator('.operator-explanation')).toContainText('Ratio shifts this layer’s pitch');
+  await expect(card.locator('.operator-suggestion')).toContainText('Try: Lengthen Attack');
+  await page.getByRole('combobox',{name:'Operator 1 Filter',exact:true}).selectOption('1');
+  await expect(card.locator('.operator-suggestion')).toContainText('Raise Cutoff for a brighter sound');
+  const other=await context.newPage(); await other.goto('about:blank'); await other.bringToFront();
+  // Chromium headless can keep tabs visually active; exercise the same native
+  // focus/visibility event handlers if its window manager does not hide a tab.
+  await page.evaluate(()=>window.dispatchEvent(new Event('blur')));
+  await expect(latch).toHaveAttribute('aria-pressed','true');
+  await expect(page.locator('#active-note')).toHaveText('C4');
+  await page.bringToFront(); await other.close();
+  await expect(page.locator('#output-level')).not.toHaveText('−∞ dB');
+  await page.getByRole('button',{name:'Stop all'}).click();
+  await expect(latch).toHaveAttribute('aria-pressed','false');
+  await expect(page.locator('#active-note')).toHaveText('—');
 });

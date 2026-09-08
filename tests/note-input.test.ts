@@ -53,3 +53,23 @@ test('latched taps survive audio startup but latch-off and panic cancel pending 
     if (stop==='panic') { assert.equal(panics(),1); assert.equal(notes.sustainEnabled('keyboard1:'),false); assert.equal(notes.sustainEnabled('keyboard2:'),false); }
   }
 });
+
+test('focus loss preserves both latches and MIDI while releasing ordinary browser keys', async () => {
+  const {notes,ons,offs,panics}=fixture();
+  let resets=0,focusLosses=0;
+  notes.onReset(()=>{resets++;}); notes.onFocusLoss(()=>{focusLosses++;});
+  notes.setSustain('keyboard1:',true);
+  await notes.press('keyboard1:key:a',60,.8,0,'keyboard1:note:60');
+  await notes.press('keyboard2:pointer:1',64,.8,0,'keyboard2:note:64');
+  await notes.press('midi:test:1:67',67,.8);
+  window.dispatchEvent(new Event('blur'));
+  assert.deepEqual(offs,[ons[1]!.id]);
+  assert.deepEqual(notes.notes('keyboard1:'),[60]); assert.deepEqual(notes.notes('keyboard2:'),[]);
+  assert.deepEqual(notes.notes('midi:'),[67]); assert.equal(notes.sustainEnabled('keyboard1:'),true);
+  notes.setSustain('keyboard2:',true);
+  await notes.press('keyboard2:pointer:2',65,.8,0,'keyboard2:note:65'); notes.release('keyboard2:pointer:2');
+  Object.defineProperty(document,'hidden',{value:true}); document.dispatchEvent(new Event('visibilitychange'));
+  assert.deepEqual(notes.notes('keyboard1:'),[60]); assert.deepEqual(notes.notes('keyboard2:'),[65]);
+  assert.equal(notes.sustainEnabled('keyboard2:'),true); assert.equal(panics(),0); assert.equal(resets,0); assert.equal(focusLosses,2);
+  notes.releaseAll(); assert.equal(notes.sustainEnabled('keyboard1:'),false); assert.equal(notes.sustainEnabled('keyboard2:'),false);
+});

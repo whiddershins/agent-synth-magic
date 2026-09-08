@@ -24,7 +24,7 @@ export function createKeyboard(container: HTMLElement, notes: NoteInput, index: 
     onNote(pitches.size ? [...pitches].map(noteName).join(' · ') : '—');
   };
   sustainButton.addEventListener('click', () => notes.setSustain(prefix, !notes.sustainEnabled(prefix)));
-  notes.subscribe(update); notes.onReset(() => pointers.clear());
+  notes.subscribe(update); notes.onReset(() => pointers.clear()); notes.onFocusLoss(() => pointers.clear());
   const press = (source: string, note: number) => {
     const { cents, octave } = tuning();
     const actual = note+octave*12;

@@ -1,6 +1,7 @@
 import { definitions } from '../patch';
 import type { ParameterDefinition, Patch, PatchStore } from '../patch';
 import { instrument } from '../parameters.generated';
+import { operatorSuggestion } from './operator-description';
 
 export function formatValue(value: number, definition: ParameterDefinition): string {
   if (definition.options) return definition.options[value] ?? String(value);
@@ -103,6 +104,7 @@ export function operatorControls(container: HTMLElement, store: PatchStore, onEr
       section.append(details); card.append(section);
     }
     const explanation = document.createElement('p'); explanation.className = 'operator-explanation';
+    const suggestion = document.createElement('p'); suggestion.className = 'operator-suggestion';
     const noteLabel = document.createElement('label'); noteLabel.className = 'annotation-label'; noteLabel.textContent = 'PATCH NOTE';
     const annotation = document.createElement('textarea'); annotation.rows = 3; annotation.maxLength = 1000;
     annotation.setAttribute('aria-label', `Operator ${op} annotation`);
@@ -111,7 +113,7 @@ export function operatorControls(container: HTMLElement, store: PatchStore, onEr
       try { const snapshot=store.read(); snapshot.patch.annotations[`op${op}`]=annotation.value; store.replace(snapshot.patch,snapshot.revision); }
       catch (error) { onError((error as Error).message); }
     });
-    noteLabel.append(annotation); card.append(explanation,noteLabel);
+    noteLabel.append(annotation); card.append(explanation,suggestion,noteLabel);
     updates.push(patch => {
       if (document.activeElement !== annotation) annotation.value=patch.annotations[`op${op}`] ?? '';
       const p = (field: string) => patch.parameters[`op${op}.${field}` as keyof Patch['parameters']];
@@ -123,6 +125,7 @@ export function operatorControls(container: HTMLElement, store: PatchStore, onEr
       const level = carrier ? 'Raising Level makes this layer louder.' : 'Raising Level increases modulation depth and usually adds brightness or grit.';
       const ratio = p('waveform')===4 ? 'Ratio and incoming FM do not change the noise source.' : carrier ? 'Ratio shifts this layer’s pitch; Detune adds beating against other carriers.' : 'Ratio changes the spacing of the added harmonics; non-integer values can sound metallic.';
       explanation.textContent = `This ${shape} ${role}. ${p('level')===0 ? 'Level is zero, so this operator is currently silent. ' : ''}${level} ${ratio} ${carrier ? 'Its envelope shapes this layer’s loudness.' : 'Its envelope shapes how the timbre changes over each note.'}`;
+      suggestion.textContent = `Try: ${operatorSuggestion(patch, op)}`;
     });
     const role = card.querySelector('.role')!;
     const path = card.querySelector('.envelope-line')!;

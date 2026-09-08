@@ -16,6 +16,7 @@ export function createNoteInput(audio: NoteAudio, onStart: () => Promise<void>, 
   const sustainPrefixes = new Set<string>();
   const listeners = new Set<() => void>();
   const resets = new Set<() => void>();
+  const focusLosses = new Set<() => void>();
   let nextId = 1024;
   const update = () => { for (const listener of listeners) listener(); };
   const stopVoice = (entry: Held) => {
@@ -83,12 +84,17 @@ export function createNoteInput(audio: NoteAudio, onStart: () => Promise<void>, 
     update();
   };
   const releaseAll = () => { held.clear(); sustained.clear(); sustainPrefixes.clear(); voices.clear(); audio.panic(); update(); for (const reset of resets) reset(); };
-  window.addEventListener('blur', releaseAll);
+  const releaseBrowserKeys = () => {
+    // Focus loss ends physical browser gestures, but sustain and MIDI remain live.
+    for (const source of [...held.keys()]) if (source.startsWith('keyboard')) release(source);
+    for (const listener of focusLosses) listener();
+  };
+  window.addEventListener('blur', releaseBrowserKeys);
   window.addEventListener('keydown', event => { if (event.code === 'Escape') releaseAll(); });
-  document.addEventListener('visibilitychange', () => { if (document.hidden) releaseAll(); });
+  document.addEventListener('visibilitychange', () => { if (document.hidden) releaseBrowserKeys(); });
   return { press, release, releasePrefix, releaseAll, expression, setSustain,
     sustainEnabled: (prefix: string) => sustainPrefixes.has(prefix),
     notes: (prefix: string, played = false) => [...held.values(), ...sustained.values()].filter(entry => entry.group.startsWith(prefix)).map(entry => played ? entry.voice.note : entry.note),
-    subscribe: (listener: () => void) => listeners.add(listener), onReset: (listener: () => void) => resets.add(listener) };
+    subscribe: (listener: () => void) => listeners.add(listener), onFocusLoss: (listener: () => void) => focusLosses.add(listener), onReset: (listener: () => void) => resets.add(listener) };
 }
 export type NoteInput = ReturnType<typeof createNoteInput>;

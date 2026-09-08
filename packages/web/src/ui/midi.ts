@@ -22,7 +22,7 @@ export function connectMidi(button: HTMLButtonElement, select: HTMLSelectElement
     return;
   }
   const message = (id: string, data: Uint8Array | null) => {
-    if (!document.hidden && (select.value === 'all' || select.value === id)) router.message(id,data);
+    if (select.value === 'all' || select.value === id) router.message(id,data);
   };
   const refresh = () => {
     const available = new Map([...access!.inputs.values()].filter(input => input.state === 'connected').map(input => [input.id, input]));
