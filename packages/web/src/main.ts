@@ -142,7 +142,6 @@ element('undo').addEventListener('click', () => { store.undo(); });
 algorithmSelect.addEventListener('change', () => store.edit({ algorithm: Number(algorithmSelect.value) }));
 presetSelect.addEventListener('change', () => {
   if (presetSelect.value === '') return;
-  keyboard.releaseAll();
   const selected = presetSelect.value.startsWith('saved:') ? savedPatches[Number(presetSelect.value.slice(6))]! : presets[Number(presetSelect.value)]!;
   store.replace(selected);
   message(`Loaded ${selected.name}.`);
@@ -189,7 +188,6 @@ fileInput.addEventListener('change', () => {
     try {
       if (file.size > 128 * 1024) throw new Error('Patch files must be smaller than 128 KB.');
       const snapshot = store.replace(JSON.parse(await file.text()));
-      keyboard.releaseAll();
       message(`Loaded ${snapshot.patch.name}.`);
     } catch (error) { onError((error as Error).message); }
     finally { fileInput.value = ''; }

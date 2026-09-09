@@ -380,6 +380,41 @@ test('MPE messages reach independent AudioWorklet voices with pitch, pressure an
   await page.screenshot({path:'build/expressive-mobile.png',fullPage:true});
 });
 
+test('patch selection and import preserve latched and physically held notes', async ({page}) => {
+  await page.goto('/');
+  await page.selectOption('#preset', '5');
+  const imported = await page.evaluate(() => window.synth.readPatch().patch);
+  imported.name = 'Continuous import';
+  await page.getByRole('button', {name: 'Save patch…', exact: true}).click();
+  await page.getByRole('button', {name: 'Save new patch', exact: true}).click();
+  await page.getByRole('button', {name: 'Enable audio'}).click();
+  const latch = page.getByRole('button', {name: 'Keyboard 2 sustain latch', exact: true});
+  await latch.click();
+  await page.locator('#keyboard2').getByRole('button', {name: 'Play C4', exact: true}).click();
+  await page.keyboard.down('a');
+  const assertPlaying = async () => {
+    await expect(latch).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.locator('#active-note')).toHaveText('C4');
+    await expect(page.locator('#active-note2')).toHaveText('C4');
+    await expect(page.locator('#output-level')).not.toHaveText('−∞ dB');
+  };
+  await assertPlaying();
+  for (const selection of ['1', 'saved:0']) {
+    await page.selectOption('#preset', selection);
+    await expect(page.locator('#preset')).toHaveValue(selection);
+    await assertPlaying();
+  }
+  await page.locator('#patch-file').setInputFiles({name: 'held.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(imported))});
+  await expect(page.locator('#patch-name')).toHaveValue(imported.name);
+  await assertPlaying();
+  await page.keyboard.up('a');
+  await expect(page.locator('#active-note')).toHaveText('—');
+  await expect(page.locator('#active-note2')).toHaveText('C4');
+  await latch.click();
+  await expect(page.locator('#active-note2')).toHaveText('—');
+  await expect(page.locator('#output-level')).toHaveText('−∞ dB');
+});
+
 test('each keyboard sustain latch holds released notes and Stop all clears both', async ({page}) => {
   await page.goto('/');
   await page.selectOption('#preset','5');
