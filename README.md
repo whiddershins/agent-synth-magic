@@ -57,7 +57,7 @@ docs/AGENT_API.md              Structured control and audition API
 - 4x oversampling with a 127-tap Blackman-windowed sinc decimator.
 - Global and optional per-operator ±48-semitone pitch envelopes and resonant low-pass, high-pass, or band-pass filters.
 - One LFO with four assignable routes, a dry-by-default reverb, and saved operator annotations.
-- Smoothed continuous controls; routing, wave shape, and pitch depth changes apply to new notes.
+- Smoothed continuous controls; routing crossfades on sounding notes over 30 ms; wave shapes blend on held notes over 30 ms; pitch depth changes apply to new notes.
 - Two keyboards with independent detune/octave controls, drag glissando, and independent touch contacts.
 - MIDI input with velocity, sustain, channel bend, and MPE pitch / pressure / timbre in supporting browsers.
 - Ten starting patches, a browser-local saved patch menu, JSON patch import/export, undo, and a fixed audition phrase.
@@ -135,8 +135,12 @@ The repository is private by default and no redistribution license is granted ye
 
 ## Expressive input
 
-Each keyboard plays the same patch through independently owned voices. Detune retunes its held notes; octave changes apply to new presses and update key labels. Each keyboard’s **Sustain latch** holds released notes until switched off; tapping a latched note again turns just that note off. Tap it once more to add it back. Keys still physically held keep sounding when the latch turns off. Switching tabs or applications preserves latched notes. Selecting or importing a patch keeps held notes and latches active; routing, waveforms and captured pitch envelopes apply to the next note. Ordinary browser keys release on focus loss, while MIDI remains responsive in the background. Stop all clears both latches. Latches are performance state and are not saved with patches. Computer keys play keyboard 1. A shared 16-voice limit applies across both keyboards and MIDI.
+Each keyboard plays the same patch through independently owned voices. Detune retunes its held notes; octave changes apply to new presses and update key labels. Each keyboard’s **Sustain latch** holds released notes until switched off; tapping a latched note again turns just that note off. Tap it once more to add it back. Keys still physically held keep sounding when the latch turns off. Switching tabs or applications preserves latched notes. Selecting or importing a patch keeps held notes and latches active; routing crossfades over 30 ms; waveforms blend over 30 ms; captured pitch envelopes apply to the next note. Ordinary browser keys release on focus loss, while MIDI remains responsive in the background. Stop all clears both latches. Latches are performance state and are not saved with patches. Computer keys play keyboard 1. A shared 16-voice limit applies across both keyboards and MIDI.
 
 Enable MIDI, then choose Classic MIDI or an MPE lower/upper zone. Match the controller’s bend range (default MPE ±48 semitones, master/classic ±2). Standard RPN 6 can configure one zone per input; RPN 0 sets bend range. Master bend adds to member bend; member and master pressure multiply amplitude. CC74 moves modulator levels from 0.5× to 1.5×, so a carrier-only patch has no timbre response until a modulator is enabled. MPE+ extensions and MIDI 2.0 are not implemented. See [Roger Linn’s MPE explanation](https://www.rogerlinndesign.com/support/support-linnstrument-what-is-mpe).
 
 For each operator, turn Pitch envelope on or choose a filter mode to reveal its editor. Collapse the editor to keep the effect active with less screen space. The technical explanation follows the current routing; a separate “Try…” line suggests changes such as more brightness, a softer attack or a slower pitch sweep; the editable patch note records your intention and is included in Save patch and Export JSON.
+
+### Share the current patch
+
+The address bar updates automatically after edits (including operator notes and keyboard tuning), without adding browser-history entries. Copy its URL or click **Copy link**. Opening it restores the patch; audio still requires activation. Use the public site for links you send to other people, since localhost URLs only work on your own machine. Shared patch data is embedded in the link, with no account or server-side storage. JSON export remains available as a portable backup.

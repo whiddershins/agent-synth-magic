@@ -23,7 +23,7 @@ A playable six-operator FM instrument with a portable C++ engine and a vanilla w
 - Operator 6 self-feedback is delayed by one internal sample. This is distinct from the agent's evaluation loop.
 - Sixteen voices, deterministic voice selection, MIDI note/velocity input. Retriggering and voice replacement use a short fade.
 - 4x internal oversampling with a low-pass decimator. This reduces aliasing; it does not promise alias-free synthesis for every patch.
-- Parameter smoothing for pitch, levels, feedback, sustain and output gain. Envelope segment durations latch at segment entry. Routing, waveform and pitch-depth changes apply to new notes.
+- Parameter smoothing for pitch, levels, feedback, sustain and output gain. Envelope segment durations latch at segment entry. Routing crossfades on sounding notes over 30 ms. Waveforms blend on sounding notes over 30 ms; pitch-depth changes apply to new notes.
 - Mono synthesis delivered to both output channels. Master gain has headroom and a final bounded output stage.
 
 ## User interface
@@ -47,6 +47,8 @@ The UI and agent facade share one patch store. Invalid or stale edits must leave
 
 ## Follow-on work
 
+Fast-follow local experiment: [two preset selectors and an A ↔ B morph slider](MORPH_EXPERIMENT.md), exploring intermediate instruments with held notes and a single interpolated routing path.
+
 Connect an audio-capable model to the existing control/audition facade, measure closed-loop improvement against a no-audio baseline, then add native JUCE standalone/AU wrappers. This first version does not include model calls, API credentials, DX7 emulation, arbitrary routing or native plugin packaging.
 
 ## Release additions accepted September 8, 2026
@@ -62,8 +64,10 @@ Two multitouch keyboards share one engine, with separate detune and octave contr
 
 LFO routes cover global pitch, output level/filter cutoff, and individual operator pitch/level/filter cutoff. Reverb uses fixed prepared delay storage and runs in the shared C++ engine for live/offline parity. Bypass clears its tail. All original patch values migrate unchanged; new effects are neutral by default.
 
-Each on-screen keyboard has an independent performance sustain latch. Released notes stay held until that keyboard’s latch is turned off, including notes traversed during glissando. Tapping a latched note again releases just that note while leaving the latch and other notes active. Another tap adds it back. Turning the latch off preserves keys still physically held. Window blur and page hiding preserve latched notes and latch switches; physical browser presses are released through the normal sustain behavior. MIDI continues to receive note-offs and expression while backgrounded. Patch selection and import preserve held notes and both sustain latches. Continuous parameters follow the new patch with the existing smoothing; routing, waveforms and captured pitch envelopes apply to new notes. Stop all and audition playback clear both latches and notes. Latch state is transient and is not saved with the patch.
+Each on-screen keyboard has an independent performance sustain latch. Released notes stay held until that keyboard’s latch is turned off, including notes traversed during glissando. Tapping a latched note again releases just that note while leaving the latch and other notes active. Another tap adds it back. Turning the latch off preserves keys still physically held. Window blur and page hiding preserve latched notes and latch switches; physical browser presses are released through the normal sustain behavior. MIDI continues to receive note-offs and expression while backgrounded. Patch selection and import preserve held notes and both sustain latches. Continuous parameters follow the new patch with the existing smoothing; routing crossfades over 30 ms; waveforms blend over 30 ms; captured pitch envelopes apply to new notes. Stop all and audition playback clear both latches and notes. Latch state is transient and is not saved with the patch.
 
 Operator cards retain their technical explanation and add a separate short “Try…” suggestion giving practical, control-specific guidance for changing the current sound, including envelope shape, brightness, body, pitch sweeps and currently silent routes. These deterministic explanations complement the saved editable operator notes; they make no model calls.
 
 Save patch opens a naming dialog with explicit Save new patch or Replace saved patch actions. Cancel preserves the current patch and saved library. A failed save must not rename the working patch or report success; concurrent changes to a replacement target must be reviewed again.
+
+The address bar continuously represents the current patch using a versioned compressed URL fragment. A 200 ms pause coalesces rapid edits; Copy link flushes immediately. Incoming valid links override tab session storage, with explicit validation errors for malformed data and no automatic audio activation. Sharing includes all parameters, patch name and operator annotations, and excludes transient performance state.

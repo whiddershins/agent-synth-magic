@@ -1,4 +1,6 @@
 import './style.css';
+import { decodePatchHash } from './patch-url';
+import { sharePatch } from './share-patch';
 import { agentPanel } from './agent/panel';
 import { PatchStore, definitions } from './patch';
 import type { Patch } from './patch';
@@ -23,21 +25,22 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
       <div class="masthead-right"><span class="edition">SOUND LAB · 001</span><button class="power-button" id="enable-audio"><span class="power-dot"></span><span class="power-label">Enable audio</span></button></div>
     </header>
 
+    <section class="keyboard-panel" aria-label="Playable keyboard"><div class="keyboard-heading"><div><span class="eyebrow">PLAY</span><span class="keyboard-help">Touch, drag to glide across keys, or use <kbd>A</kbd>–<kbd>K</kbd>.</span></div><div class="keyboard-right"><span id="active-note">—</span><button id="panic" class="quiet-button">Stop all <kbd>esc</kbd></button></div></div><div class="midi-bar"><button id="enable-midi" class="quiet-button">Enable MIDI</button><select id="midi-input" aria-label="MIDI input" hidden></select><span id="midi-status">Connect a MIDI keyboard, or play with multiple fingers.</span></div><div class="mpe-options"><label>MIDI mode<select id="midi-mode"><option value="classic">Classic MIDI</option><option value="lower">MPE · lower zone (2–16)</option><option value="upper">MPE · upper zone (1–15)</option></select></label><label>Member bend ± semitones<input id="midi-member-range" type="number" min="1" max="96" step="1" value="48" /></label><label>Master / classic bend ± semitones<input id="midi-master-range" type="number" min="1" max="48" step="1" value="2" /></label></div><p class="micro-copy">MPE: per-note pitch bend, pressure → volume, and CC74 → modulation depth. Match the bend range on your controller. MIDI RPN messages can configure a zone or bend range.</p><div class="keyboard-heading"><span class="eyebrow">KEYBOARD 1 · A–K</span><button id="keyboard1-sustain" class="quiet-button sustain-latch" aria-label="Keyboard 1 sustain latch" aria-pressed="false" title="Holds released notes. Tap a sustained note again to turn it off, or switch the latch off to release all its notes.">Sustain latch · Off</button></div><div class="keyboard-tuning" id="keyboard1-controls"></div><div class="keyboard-scroll"><div id="keyboard" class="keyboard"></div></div><div class="keyboard-heading"><span class="eyebrow">KEYBOARD 2 · TOUCH / MOUSE</span><div class="keyboard-right"><span id="active-note2">—</span><button id="keyboard2-sustain" class="quiet-button sustain-latch" aria-label="Keyboard 2 sustain latch" aria-pressed="false" title="Holds released notes. Tap a sustained note again to turn it off, or switch the latch off to release all its notes.">Sustain latch · Off</button></div></div><div class="keyboard-tuning" id="keyboard2-controls"></div><div class="keyboard-scroll"><div id="keyboard2" class="keyboard"></div></div></section>
+
     <section class="patch-bar" aria-label="Patch selection">
       <div class="patch-selector"><label class="eyebrow" for="preset">PATCHES</label><select id="preset"><option value="">Custom patch</option></select></div>
       <div class="patch-identity"><label class="eyebrow" for="patch-name">PATCH NAME</label><input id="patch-name" maxlength="80" spellcheck="false" /><span id="revision" class="revision">REV 00</span></div>
-      <div class="patch-actions"><button class="quiet-button" id="undo" title="Undo the last edit">↶ Undo</button><button class="quiet-button" id="save-patch" title="Choose a name and save a new patch or replace an existing one.">Save patch…</button><button class="quiet-button" id="import-patch">Load patch</button><button class="quiet-button" id="export-patch">Export JSON ↓</button><input id="patch-file" type="file" accept=".json,application/json" hidden /></div>
+      <div class="patch-actions"><button class="quiet-button" id="undo" title="Undo the last edit">↶ Undo</button><button class="quiet-button" id="save-patch" title="Choose a name and save a new patch or replace an existing one.">Save patch…</button><button class="quiet-button" id="import-patch">Load patch</button><button class="quiet-button" id="export-patch">Export JSON ↓</button><button class="quiet-button" id="copy-patch-link">Copy link</button><input id="patch-file" type="file" accept=".json,application/json" hidden /></div>
     </section>
     <p class="patch-storage-note" id="patch-storage-status" role="status" aria-live="polite">Save patch… lets you choose a name. Export JSON makes a backup or transfers it to another device.</p>
-
-    <section class="keyboard-panel" aria-label="Playable keyboard"><div class="keyboard-heading"><div><span class="eyebrow">PLAY</span><span class="keyboard-help">Touch, drag to glide across keys, or use <kbd>A</kbd>–<kbd>K</kbd>.</span></div><div class="keyboard-right"><span id="active-note">—</span><button id="panic" class="quiet-button">Stop all <kbd>esc</kbd></button></div></div><div class="midi-bar"><button id="enable-midi" class="quiet-button">Enable MIDI</button><select id="midi-input" aria-label="MIDI input" hidden></select><span id="midi-status">Connect a MIDI keyboard, or play with multiple fingers.</span></div><div class="mpe-options"><label>MIDI mode<select id="midi-mode"><option value="classic">Classic MIDI</option><option value="lower">MPE · lower zone (2–16)</option><option value="upper">MPE · upper zone (1–15)</option></select></label><label>Member bend ± semitones<input id="midi-member-range" type="number" min="1" max="96" step="1" value="48" /></label><label>Master / classic bend ± semitones<input id="midi-master-range" type="number" min="1" max="48" step="1" value="2" /></label></div><p class="micro-copy">MPE: per-note pitch bend, pressure → volume, and CC74 → modulation depth. Match the bend range on your controller. MIDI RPN messages can configure a zone or bend range.</p><div class="keyboard-heading"><span class="eyebrow">KEYBOARD 1 · A–K</span><button id="keyboard1-sustain" class="quiet-button sustain-latch" aria-label="Keyboard 1 sustain latch" aria-pressed="false" title="Holds released notes. Tap a sustained note again to turn it off, or switch the latch off to release all its notes.">Sustain latch · Off</button></div><div class="keyboard-tuning" id="keyboard1-controls"></div><div class="keyboard-scroll"><div id="keyboard" class="keyboard"></div></div><div class="keyboard-heading"><span class="eyebrow">KEYBOARD 2 · TOUCH / MOUSE</span><div class="keyboard-right"><span id="active-note2">—</span><button id="keyboard2-sustain" class="quiet-button sustain-latch" aria-label="Keyboard 2 sustain latch" aria-pressed="false" title="Holds released notes. Tap a sustained note again to turn it off, or switch the latch off to release all its notes.">Sustain latch · Off</button></div></div><div class="keyboard-tuning" id="keyboard2-controls"></div><div class="keyboard-scroll"><div id="keyboard2" class="keyboard"></div></div></section>
+    <p class="patch-storage-note" id="patch-share-status" role="status" aria-live="polite"></p>
 
     <section id="agent-panel" class="agent-panel" aria-label="Agent connection" hidden></section>
 
     <div class="workbench">
       <section class="operators" aria-label="Six operators"><div class="section-label"><span>01—06 / OPERATORS</span><span>Shape the tone. Then the movement.</span></div><div id="operator-grid" class="operator-grid"></div></section>
       <aside class="sidebar" aria-label="Routing and output">
-        <section class="routing-panel"><div class="section-label"><label for="algorithm">SIGNAL ROUTING</label><span class="tiny-dot"></span></div><select id="algorithm"></select><svg id="routing" viewBox="0 0 240 158" role="img"></svg><div class="routing-legend"><span><i class="legend-carrier"></i>Carrier</span><span><i class="legend-modulator"></i>Modulator</span></div><p class="micro-copy">Routing changes apply to new notes.</p><div id="feedback-control"></div></section>
+        <section class="routing-panel"><div class="section-label"><label for="algorithm">SIGNAL ROUTING</label><span class="tiny-dot"></span></div><select id="algorithm"></select><svg id="routing" viewBox="0 0 240 158" role="img"></svg><div class="routing-legend"><span><i class="legend-carrier"></i>Carrier</span><span><i class="legend-modulator"></i>Modulator</span></div><p class="micro-copy">Routing changes crossfade over 30 ms, including held notes.</p><div id="feedback-control"></div></section>
         <section class="pitch-panel"><div class="section-label"><span>PITCH ENVELOPE</span></div><div id="pitch-depth"></div><details><summary>Delay · hold · ADSR</summary><div id="pitch-controls" class="envelope-controls"></div></details><p class="micro-copy">Depth applies to new notes. Zero keeps the played pitch.</p></section>
         <section class="filter-panel"><div class="section-label"><span>TONE FILTER</span></div><div id="filter-controls"></div></section>
         <section class="lfo-panel"><div class="section-label"><span>LFO MODULATION</span></div><div id="lfo-controls"></div><p class="micro-copy">Four routes share one LFO. Depth is a percentage of the range shown in each target. Zero depth leaves the target unchanged.</p></section>
@@ -55,6 +58,16 @@ const element = <T extends HTMLElement>(id: string): T => document.getElementByI
 let store: PatchStore;
 try { store = new PatchStore(JSON.parse(sessionStorage.getItem('fm6.patch') ?? 'null') ?? presets[0]); }
 catch { store = new PatchStore(presets[0]); }
+let sharedPatchError: string | undefined;
+try {
+  let pendingReload = false;
+  try {
+    pendingReload = (performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined)?.type === 'reload'
+      && sessionStorage.getItem('fm6.pending-patch-url') === location.href;
+  } catch { /* Storage can be disabled. */ }
+  const shared = pendingReload ? undefined : await decodePatchHash(location.hash);
+  if (shared) store = new PatchStore(shared);
+} catch (error) { sharedPatchError = (error as Error).message; }
 const status = element<HTMLParagraphElement>('status');
 function message(text: string, error = false): void { status.textContent = text; status.classList.toggle('error', error); }
 const onError = (text: string) => message(text, true);
@@ -137,6 +150,8 @@ store.subscribe(({ patch, revision }) => {
   void lastSync.catch((error) => onError((error as Error).message));
 });
 update(store.read().patch, 0);
+try { sessionStorage.setItem('fm6.patch', JSON.stringify(store.read().patch)); } catch { /* Storage can be disabled. */ }
+sharePatch(store, element('patch-share-status'), element<HTMLButtonElement>('copy-patch-link'), sharedPatchError);
 
 power.addEventListener('click', () => { void ensureAudio().catch((error) => onError((error as Error).message)); });
 element('panic').addEventListener('click', () => { keyboard.releaseAll(); message('All notes released.'); });

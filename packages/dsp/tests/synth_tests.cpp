@@ -138,6 +138,90 @@ void routing_and_repeatability() {
         previous = whole;
     }
 }
+void live_routing() {
+    // Match a continuously running destination voice after the fade: this checks
+    // oscillator phase and envelope progress without exposing private state.
+    auto patch = complex_patch(0);
+    patch.values[2] = 0;
+    for (int op=0; op<6; ++op) patch.op(op, attack) = .8f;
+    Synth changed, destination;
+    require(changed.set_patch(patch) && changed.note_on_id(42, 60, .8f), "routing source starts");
+    patch.values[0] = 1;
+    require(destination.set_patch(patch) && destination.note_on_id(42, 60, .8f), "routing reference starts");
+    std::array<float, 4096> a{}, b{};
+    changed.render(a); destination.render(b);
+    require(changed.set_patch(patch), "held routing changes");
+    changed.render(a); destination.render(b);
+    double error = 0;
+    for (int i=2048; i<4096; ++i) error += std::abs(a[i]-b[i]);
+    require(error < .0001, "routing converges without restarting phases or envelopes");
+    require(changed.active_voices() == 1, "routing preserves note ownership");
+    changed.note_off_id(42);
+    for (int i=0; i<5; ++i) changed.render(a);
+    require(changed.active_voices() == 0 && peak(a) == 0, "release after routing finishes normally");
+
+    const auto run = [](int block) {
+        Synth synth;
+        auto p = complex_patch(0);
+        p.values[2] = 2;
+        for (int op=0; op<6; ++op) {
+            p.op(op, waveform) = static_cast<float>(op%5);
+            p.op(op, op_filter_type) = 1;
+            p.op(op, sustain) = .7f;
+        }
+        require(synth.set_patch(p), "stress routing patch valid");
+        for (int n=0; n<16; ++n) require(synth.note_on_id(n, 48+n, .7f), "stress voice starts");
+        std::vector<float> samples(16000);
+        for (int start=0; start<16000;) {
+            // Requests every 200 samples are faster than a fade; the final one wins.
+            if (start%200 == 0) {
+                p.values[0] = static_cast<float>((start/200)%4);
+                for (int op=0; op<6; ++op) p.op(op, waveform) = static_cast<float>((op+start/200)%5);
+                monitor_allocations = true;
+                const bool ok = synth.set_patch(p);
+                monitor_allocations = false;
+                require(ok, "queued routing accepted");
+            }
+            const int count=std::min({block, 200-start%200, 16000-start});
+            monitor_allocations = true;
+            synth.render(std::span<float>(samples.data()+start,count));
+            monitor_allocations = false;
+            start += count;
+        }
+        require(synth.active_voices() == 16, "rapid routing preserves all voices");
+        for (float sample : samples) require(std::isfinite(sample) && std::abs(sample)<=1, "rapid routing remains bounded");
+        synth.panic();
+        std::array<float,1024> tail{}; synth.render(tail);
+        require(synth.active_voices()==0 && peak(std::span<const float>(tail).last(256))==0, "panic during routing clears voices");
+        return samples;
+    };
+    const int before_allocations=allocations, before_deallocations=deallocations;
+    require(run(127)==run(512), "queued routing is independent of caller block size");
+    require(allocations==before_allocations && deallocations==before_deallocations, "routing never allocates or frees");
+}
+
+void live_waveforms() {
+    for (int shape=1; shape<=3; ++shape) {
+        Synth changed, destination;
+        auto patch = sine_patch();
+        patch.op(0, attack) = .3f;
+        require(changed.set_patch(patch) && changed.note_on_id(42, 60, .8f), "wave source starts");
+        patch.op(0, waveform) = static_cast<float>(shape);
+        require(destination.set_patch(patch) && destination.note_on_id(42, 60, .8f), "wave reference starts");
+        std::array<float,4096> a{}, b{};
+        changed.render(a); destination.render(b);
+        require(changed.set_patch(patch), "held waveform changes");
+        changed.render(a); destination.render(b);
+        double error = 0;
+        for (int i=2048; i<4096; ++i) error += std::abs(a[i]-b[i]);
+        require(error < .0001, "wave change reaches destination without phase or attack reset");
+        require(changed.active_voices()==1, "wave change keeps held note identity");
+        changed.note_off_id(42);
+        for (int i=0; i<5; ++i) changed.render(a);
+        require(changed.active_voices()==0 && peak(a)==0, "wave change preserves normal release");
+    }
+}
+
 void polyphony_and_extremes() {
     Synth synth;
     auto patch = complex_patch(1);
@@ -337,6 +421,8 @@ int main() {
     tuning_and_release();
     validation();
     routing_and_repeatability();
+    live_routing();
+    live_waveforms();
     polyphony_and_extremes();
     allocation_free_audio_path();
     expressive_identity_and_pitch();

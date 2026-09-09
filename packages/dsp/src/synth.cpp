@@ -67,6 +67,7 @@ bool Synth::prepare(double sample_rate) noexcept {
     internal_rate_ = sample_rate * oversampling;
     smoothing_ = static_cast<float>(1.0 - std::exp(-1.0 / (sample_rate * 0.01)));
     fade_samples_ = static_cast<int>(internal_rate_ * 0.003);
+    routing_samples_ = static_cast<int>(internal_rate_ * 0.03);
     age_ = 0;
     voices_ = {};
     history_ = {};
@@ -84,6 +85,7 @@ bool Synth::set_patch(const Patch& patch) noexcept {
     if (!patch.valid()) return false;
     patch_ = patch;
     update_targets();
+    for (auto& voice : voices_) if (active(voice) && voice.routing_remaining == 0) start_routing(voice);
     if (active_voices() == 0 && !reverb_.active()) current_ = target_;
     return true;
 }
@@ -142,7 +144,8 @@ void Synth::smooth() noexcept {
 bool Synth::active(const Voice& voice) const noexcept {
     if (voice.note < 0) return false;
     if (voice.tail_remaining > 0) return true;
-    const auto mask = routings[voice.algorithm].carriers;
+    const auto mask = routings[voice.algorithm].carriers |
+        (voice.routing_remaining > 0 ? routings[voice.next_algorithm].carriers : 0);
     for (int i = 0; i < operator_count; ++i) {
         if ((mask & (1u << i)) && voice.operators[i].envelope.active()) return true;
     }
@@ -188,10 +191,11 @@ bool Synth::note_on_id(int id, int note, float velocity, float cents) noexcept {
         op.pitch_amount = patch_.op(i, op_pitch_enabled) ? patch_.op(i, op_pitch_amount) : 0;
         op.pitch_envelope.start(patch_.op(i, op_pitch_attack), sample_rate_, patch_.op(i, op_pitch_delay), patch_.op(i, op_pitch_hold));
         op.envelope.start(patch_.op(i, attack), internal_rate_, patch_.op(i, delay), patch_.op(i, hold));
-        op.waveform = static_cast<int>(patch_.op(i, waveform));
-        op.noise = 0x9e3779b9u ^ (static_cast<std::uint32_t>(note + 1) * 0x85ebca6bu)
+        auto& oscillator = selected->oscillators[i];
+        oscillator.waveform = static_cast<int>(patch_.op(i, waveform));
+        oscillator.noise = 0x9e3779b9u ^ (static_cast<std::uint32_t>(note + 1) * 0x85ebca6bu)
             ^ (static_cast<std::uint32_t>(i + 1) * 0xc2b2ae35u) ^ static_cast<std::uint32_t>(age_);
-        if (op.noise == 0) op.noise = 1;
+        if (oscillator.noise == 0) oscillator.noise = 1;
     }
     return true;
 }
@@ -236,16 +240,31 @@ float Synth::sine(double cycles) const noexcept {
     return sine_table_[index] + fraction * (sine_table_[index + 1] - sine_table_[index]);
 }
 
-float Synth::oscillator(OperatorState& op, double cycles, double increment) const noexcept {
-    if (op.waveform == 0) return sine(cycles);
-    if (op.waveform == 4) {
+float Synth::oscillator(OscillatorState& op, double cycles, double increment, int target_waveform) const noexcept {
+    if (op.waveform_remaining == 0 && target_waveform != op.waveform) {
+        op.next_waveform = target_waveform;
+        op.waveform_remaining = routing_samples_;
+    }
+    const float source = waveform_sample(op, op.waveform, cycles, increment);
+    if (op.waveform_remaining == 0) return source;
+    // Both shapes see the same modulated phase, before the operator filter/FM edges.
+    // Only one of the two distinct shapes can be noise, so its PRNG advances once.
+    const float destination = waveform_sample(op, op.next_waveform, cycles, increment);
+    const float mix = static_cast<float>(routing_samples_ - op.waveform_remaining) / (routing_samples_ - 1);
+    if (--op.waveform_remaining == 0) op.waveform = op.next_waveform;
+    return source * (1 - mix) + destination * mix;
+}
+
+float Synth::waveform_sample(OscillatorState& op, int shape, double cycles, double increment) const noexcept {
+    if (shape == 0) return sine(cycles);
+    if (shape == 4) {
         op.noise ^= op.noise << 13; op.noise ^= op.noise >> 17; op.noise ^= op.noise << 5;
         return static_cast<float>(op.noise >> 8) / 8388608.0f - 1.0f;
     }
     const double phase = cycles - std::floor(cycles);
     const double step = std::clamp(increment, 1e-8, 0.49);
-    if (op.waveform == 1) return static_cast<float>(1 - 4 * std::abs(phase - 0.5));
-    if (op.waveform == 2) return static_cast<float>(2 * phase - 1 - poly_blep(phase, step));
+    if (shape == 1) return static_cast<float>(1 - 4 * std::abs(phase - 0.5));
+    if (shape == 2) return static_cast<float>(2 * phase - 1 - poly_blep(phase, step));
     const double shifted = phase < 0.5 ? phase + 0.5 : phase - 0.5;
     return static_cast<float>((phase < 0.5 ? 1 : -1) + poly_blep(phase, step) - poly_blep(shifted, step));
 }
@@ -279,28 +298,58 @@ void Synth::modulation() noexcept {
     }
 }
 
-float Synth::render_voice(Voice& voice) noexcept {
-    const auto& routing = routings[voice.algorithm];
+float Synth::render_routing(const Voice& voice, int algorithm,
+    std::array<OscillatorState, operator_count>& oscillators,
+    const std::array<float, operator_count>& envelopes) const noexcept {
+    const auto& routing = routings[algorithm];
     std::array<float, operator_count> outputs{};
     float mixed = 0;
     for (int i = operator_count - 1; i >= 0; --i) {
-        auto& op = voice.operators[i];
+        auto& op = oscillators[i];
         float modulation = i == 5 ? current_.feedback * op.previous : 0.0f;
         for (int j = i + 1; j < operator_count; ++j) {
             if (routing.inputs[i] & (1u << j)) modulation += modulation_radians * outputs[j];
         }
-        const float envelope = op.envelope.next(patch_.op(i, decay), current_.sustains[i], internal_rate_);
-        const double increment = voice.frequency * voice.pitch_multiplier * op.pitch_multiplier * lfo_pitch_[i] * current_.multipliers[i] / internal_rate_;
+        const float envelope = envelopes[i];
+        const double increment = voice.frequency * voice.pitch_multiplier * voice.operators[i].pitch_multiplier * lfo_pitch_[i] * current_.multipliers[i] / internal_rate_;
         const bool carrier = routing.carriers & (1u << i);
         const float expression_level = carrier ? 1 : .5f + voice.timbre;
-        outputs[i] = op.filter.next(oscillator(op, op.phase + modulation / tau, increment), operator_coefficients_[i])
+        outputs[i] = op.filter.next(oscillator(op, op.phase + modulation / tau, increment, static_cast<int>(patch_.op(i, waveform))), operator_coefficients_[i])
             * envelope * current_.levels[i] * std::max(0.0f, 1+modulation_[5+3*i]) * expression_level;
         op.previous = outputs[i];
         op.phase += increment;
         op.phase -= std::floor(op.phase);
         if (routing.carriers & (1u << i)) mixed += outputs[i];
     }
-    mixed *= voice.velocity * voice.pressure / routing.carrier_count;
+    return mixed * voice.velocity * voice.pressure / routing.carrier_count;
+}
+
+void Synth::start_routing(Voice& voice) noexcept {
+    const int target = static_cast<int>(patch_.values[0]);
+    if (target == voice.algorithm) return;
+    voice.next_algorithm = target;
+    voice.next_oscillators = voice.oscillators;
+    // Separate filter and feedback histories evolve from the current signal state.
+    voice.routing_remaining = routing_samples_;
+}
+
+float Synth::render_voice(Voice& voice) noexcept {
+    std::array<float, operator_count> envelopes{};
+    for (int i = 0; i < operator_count; ++i) {
+        envelopes[i] = voice.operators[i].envelope.next(patch_.op(i, decay), current_.sustains[i], internal_rate_);
+    }
+    float mixed = render_routing(voice, voice.algorithm, voice.oscillators, envelopes);
+    if (voice.routing_remaining > 0) {
+        const float next = render_routing(voice, voice.next_algorithm, voice.next_oscillators, envelopes);
+        const float blend = static_cast<float>(routing_samples_ - voice.routing_remaining) / (routing_samples_ - 1);
+        mixed += blend * (next - mixed);
+        if (--voice.routing_remaining == 0) {
+            voice.algorithm = voice.next_algorithm;
+            voice.oscillators = voice.next_oscillators;
+            // Latest requested algorithm is the only pending target; never stack fades.
+            start_routing(voice);
+        }
+    }
     if (voice.tail_remaining > 0) {
         mixed += voice.tail * static_cast<float>(voice.tail_remaining) / fade_samples_;
         --voice.tail_remaining;

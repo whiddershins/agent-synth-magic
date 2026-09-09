@@ -125,7 +125,7 @@ export const parameters = [
     "default": 0,
     "step": 1,
     "integer": true,
-    "description": "Routing topology. Changes apply to newly started notes; existing notes retain their routing."
+    "description": "Routing topology. Sounding notes crossfade to the new routing over 30 ms without restarting envelopes."
   },
   {
     "id": "gain",
@@ -757,7 +757,7 @@ export const parameters = [
     "max": 4,
     "default": 0,
     "step": 1,
-    "description": "Oscillator shape, captured at note-on. Noise is deterministic white noise; ratio and incoming phase modulation do not change a noise source.",
+    "description": "Oscillator shape. Held notes blend phase-aligned shapes over 30 ms without restarting envelopes. Noise is deterministic white noise; ratio and incoming phase modulation do not change a noise source.",
     "integer": true,
     "options": [
       "Sine",
@@ -801,7 +801,7 @@ export const parameters = [
     "max": 4,
     "default": 0,
     "step": 1,
-    "description": "Oscillator shape, captured at note-on. Noise is deterministic white noise; ratio and incoming phase modulation do not change a noise source.",
+    "description": "Oscillator shape. Held notes blend phase-aligned shapes over 30 ms without restarting envelopes. Noise is deterministic white noise; ratio and incoming phase modulation do not change a noise source.",
     "integer": true,
     "options": [
       "Sine",
@@ -845,7 +845,7 @@ export const parameters = [
     "max": 4,
     "default": 0,
     "step": 1,
-    "description": "Oscillator shape, captured at note-on. Noise is deterministic white noise; ratio and incoming phase modulation do not change a noise source.",
+    "description": "Oscillator shape. Held notes blend phase-aligned shapes over 30 ms without restarting envelopes. Noise is deterministic white noise; ratio and incoming phase modulation do not change a noise source.",
     "integer": true,
     "options": [
       "Sine",
@@ -889,7 +889,7 @@ export const parameters = [
     "max": 4,
     "default": 0,
     "step": 1,
-    "description": "Oscillator shape, captured at note-on. Noise is deterministic white noise; ratio and incoming phase modulation do not change a noise source.",
+    "description": "Oscillator shape. Held notes blend phase-aligned shapes over 30 ms without restarting envelopes. Noise is deterministic white noise; ratio and incoming phase modulation do not change a noise source.",
     "integer": true,
     "options": [
       "Sine",
@@ -933,7 +933,7 @@ export const parameters = [
     "max": 4,
     "default": 0,
     "step": 1,
-    "description": "Oscillator shape, captured at note-on. Noise is deterministic white noise; ratio and incoming phase modulation do not change a noise source.",
+    "description": "Oscillator shape. Held notes blend phase-aligned shapes over 30 ms without restarting envelopes. Noise is deterministic white noise; ratio and incoming phase modulation do not change a noise source.",
     "integer": true,
     "options": [
       "Sine",
@@ -977,7 +977,7 @@ export const parameters = [
     "max": 4,
     "default": 0,
     "step": 1,
-    "description": "Oscillator shape, captured at note-on. Noise is deterministic white noise; ratio and incoming phase modulation do not change a noise source.",
+    "description": "Oscillator shape. Held notes blend phase-aligned shapes over 30 ms without restarting envelopes. Noise is deterministic white noise; ratio and incoming phase modulation do not change a noise source.",
     "integer": true,
     "options": [
       "Sine",

@@ -50,16 +50,20 @@ public:
 private:
     static constexpr int sine_size = 4096;
     static constexpr int filter_size = 127;
-    struct OperatorState {
+    struct OscillatorState {
         double phase = 0.0;
         float previous = 0.0f;
+        FilterState filter;
+        int waveform = 0;
+        int next_waveform = 0;
+        int waveform_remaining = 0;
+        std::uint32_t noise = 1;
+    };
+    struct OperatorState {
         Envelope envelope;
         Envelope pitch_envelope;
         float pitch_amount = 0;
         double pitch_multiplier = 1;
-        FilterState filter;
-        int waveform = 0;
-        std::uint32_t noise = 1;
     };
     struct Voice {
         std::array<OperatorState, operator_count> operators{};
@@ -68,7 +72,11 @@ private:
         float cents = 0, target_cents = 0;
         float pressure = 1, target_pressure = 1;
         float timbre = .5f, target_timbre = .5f;
+        std::array<OscillatorState, operator_count> oscillators{};
+        std::array<OscillatorState, operator_count> next_oscillators{};
         int algorithm = 0;
+        int next_algorithm = 0;
+        int routing_remaining = 0;
         float velocity = 0.0f;
         double frequency = 0.0;
         std::uint64_t age = 0;
@@ -98,9 +106,14 @@ private:
     };
 
     [[nodiscard]] float sine(double cycles) const noexcept;
-    [[nodiscard]] float oscillator(OperatorState& op, double cycles, double increment) const noexcept;
+    [[nodiscard]] float oscillator(OscillatorState& op, double cycles, double increment, int target_waveform) const noexcept;
+    [[nodiscard]] float waveform_sample(OscillatorState& op, int shape, double cycles, double increment) const noexcept;
     void modulation() noexcept;
     [[nodiscard]] float render_voice(Voice& voice) noexcept;
+    [[nodiscard]] float render_routing(const Voice& voice, int algorithm,
+        std::array<OscillatorState, operator_count>& oscillators,
+        const std::array<float, operator_count>& envelopes) const noexcept;
+    void start_routing(Voice& voice) noexcept;
     [[nodiscard]] bool active(const Voice& voice) const noexcept;
     void update_targets() noexcept;
     void smooth() noexcept;
@@ -109,6 +122,7 @@ private:
     double internal_rate_ = 192000.0;
     float smoothing_ = 0.0f;
     int fade_samples_ = 576;
+    int routing_samples_ = 5760;
     std::uint64_t age_ = 0;
     Patch patch_ = Patch::initial();
     SmoothState current_{};

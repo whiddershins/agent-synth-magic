@@ -491,3 +491,94 @@ test('tapping a sustained note toggles it off without changing the latch or othe
   await c.click(); await expect(page.locator('#active-note')).toHaveText('E4 · C4');
   await page.keyboard.press('a'); await expect(page.locator('#active-note')).toHaveText('E4');
 });
+
+test('routing changes the actual output of a latched note without retriggering it', async ({page}) => {
+  await page.goto('/');
+  await page.selectOption('#preset', '5');
+  await page.evaluate(async () => {
+    const snapshot=window.synth.readPatch();
+    await window.synth.applyChanges({algorithm:0,'op1.level':0,'op3.level':.8,'op3.sustain':1,'op3.attack':.001},snapshot.revision);
+  });
+  await page.getByRole('button',{name:'Enable audio'}).click();
+  const latch=page.getByRole('button',{name:'Keyboard 1 sustain latch',exact:true});
+  await latch.click();
+  await page.locator('#keyboard').getByRole('button',{name:'Play C4',exact:true}).click();
+  await expect(page.locator('#output-level')).not.toHaveText('−∞ dB');
+  // Operator 3 is audible in Three pairs; Six-stack outputs only silent op 1.
+  await page.selectOption('#algorithm', '1');
+  await expect(page.locator('#output-level')).toHaveText('−∞ dB');
+  await expect(latch).toHaveAttribute('aria-pressed','true');
+  await expect(page.locator('#active-note')).toHaveText('C4');
+  await page.selectOption('#algorithm', '0');
+  await expect(page.locator('#output-level')).not.toHaveText('−∞ dB');
+  await latch.click();
+  await expect(page.locator('#output-level')).toHaveText('−∞ dB');
+});
+
+test('address bar follows edits and undo, and restores a shared patch over session state', async ({ page, context }) => {
+  await page.goto('/');
+  await expect(page.locator('#patch-share-status')).toContainText('address bar contains');
+  const initial = page.url();
+  const historyLength = await page.evaluate(() => history.length);
+  const shared = await page.evaluate(async () => {
+    const snapshot = window.synth.readPatch();
+    snapshot.patch.name = 'Shared 🌊';
+    snapshot.patch.annotations.op3 = 'Metal & glass / # ? 🎹';
+    snapshot.patch.parameters['keyboard2.detune'] = 12.3456789;
+    snapshot.patch.parameters['op1.waveform'] = 3;
+    await window.synth.replacePatch(snapshot.patch, snapshot.revision);
+    return snapshot.patch;
+  });
+  await expect(page.locator('#patch-share-status')).toContainText('address bar contains');
+  const link = page.url();
+  expect(link).not.toBe(initial);
+  expect(await page.evaluate(() => history.length)).toBe(historyLength);
+  await page.locator('#undo').click();
+  await expect(page).toHaveURL(initial);
+  // Existing tab session data must not override an incoming shared URL.
+  await page.goto(link);
+  await expect(page.locator('#patch-name')).toHaveValue(shared.name);
+  expect(await page.evaluate(() => window.synth.readPatch().patch)).toEqual(shared);
+  await expect(page.locator('#enable-audio')).toContainText('Enable audio');
+  const other = await context.newPage();
+  await other.goto(link);
+  await expect(other.locator('#patch-name')).toHaveValue(shared.name);
+  expect(await other.evaluate(() => window.synth.readPatch().patch)).toEqual(shared);
+  await page.evaluate(() => { location.hash = '#patch=v1.invalid'; });
+  await expect(page.locator('#patch-share-status')).toContainText('could not be loaded');
+  expect(await page.evaluate(() => window.synth.readPatch().patch)).toEqual(shared);
+  await expect(page.locator('#copy-patch-link')).toBeDisabled();
+  await other.close();
+});
+
+test('Wave changes a sustained AudioWorklet note without another key press', async ({ page }) => {
+  await page.addInitScript(() => {
+    const read = AnalyserNode.prototype.getFloatTimeDomainData;
+    AnalyserNode.prototype.getFloatTimeDomainData = function(buffer) {
+      read.call(this, buffer);
+      let sum = 0;
+      for (const sample of buffer) sum += sample * sample;
+      document.body.dataset.measuredRms = String(Math.sqrt(sum / buffer.length));
+    };
+  });
+  await page.goto('/');
+  await page.selectOption('#preset', '5');
+  await page.evaluate(async () => {
+    const { revision } = window.synth.readPatch();
+    await window.synth.applyChanges({ 'op1.waveform': 0, 'op1.attack': .001, 'op1.sustain': 1 }, revision);
+  });
+  await page.getByRole('button', { name: 'Enable audio' }).click();
+  const latch = page.getByRole('button', { name: 'Keyboard 1 sustain latch', exact: true });
+  await latch.click();
+  await page.locator('#keyboard').getByRole('button', { name: 'Play C4', exact: true }).click();
+  const rms = () => page.evaluate(() => Number(document.body.dataset.measuredRms ?? 0));
+  await expect.poll(rms).toBeGreaterThan(.01);
+  const sineRms = await rms();
+  await page.getByRole('combobox', { name: 'Operator 1 Wave', exact: true }).selectOption('3');
+  await expect.poll(rms).toBeGreaterThan(sineRms * 1.2);
+  await expect(latch).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#active-note')).toHaveText('C4');
+  await page.getByRole('combobox', { name: 'Operator 1 Wave', exact: true }).selectOption('0');
+  await expect.poll(rms).toBeLessThan(sineRms * 1.1);
+  await page.getByRole('button', { name: 'Stop all' }).click();
+});
